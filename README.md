@@ -2,6 +2,13 @@
 
 macOS 菜单栏工具：把 [tailcat](https://github.com/tailscale/tailcat) 的转发、服务、文件与诊断包进图形界面。Mac 既可以作为客户端连接别人，也可以作为服务端把本机端口、目录、SSH 提供出去。
 
+<p>
+<img src="docs/screenshots/menu.png" alt="菜单栏：按转发 / SOCKS / 服务 / 收件箱分组，一键开关" width="360">
+<img src="docs/screenshots/manage.png" alt="管理窗口：规则详情、远端状态与端口映射" width="720">
+</p>
+
+截图由示例数据渲染（见 `scripts/snapshot.sh`），不含真实地址或本机路径。
+
 ## 要求
 
 - macOS 13+（Apple 芯片或 Intel）

@@ -13,6 +13,7 @@ TailCat 是 [tailcat](https://github.com/tailscale/tailcat) 的 macOS 菜单栏�
 | `Tests/TailCatCoreTests/` | Swift Testing 单测，用 `/bin/sh` 脚本冒充 tailcat |
 | `Resources/` | `Info.plist`（版本号唯一来源）、`AppIcon.icns`（由脚本生成） |
 | `scripts/` | 打包、DMG、发布说明、截图、图标 |
+| `docs/screenshots/` | README 用的界面截图（必须来自 `snapshot.sh`，不得用真实用户数据） |
 | `.github/workflows/` | CI（build + test）与 Release（推 tag 发布 DMG） |
 
 ## 工具链与常用命令
@@ -50,12 +51,12 @@ swift scripts/make-icon.swift              # 重新生成 Resources/AppIcon.icns
 
 ## 界面修改
 
-- 【SHOULD】改 UI 前后各跑一次 `./scripts/snapshot.sh` 和 `--dark`，逐页对比；新增状态（空、出错、未安装等）要在 `Snapshot.swift` 里补对应页面。
+- 【SHOULD】改 UI 前后各跑一次 `./scripts/snapshot.sh` 和 `--dark`，逐页对比；新增状态（空、出错、未安装等）要在 `Snapshot.swift` 里补对应页面。README 截图（`docs/screenshots/`）改完界面后用同一套 snapshot 覆盖。
 - snapshot 不含标题栏/工具栏，未聚焦窗口的开关呈灰色，属于渲染限制而非 bug。
 
 ## Git 与提交
 
-- 主干分支 `main`；功能开发可用短分支 + PR，CI 通过后合入。
+- 主干分支 `main` 已开分支保护：合入须 `build-test` 通过，禁止 force push / 删除分支；功能开发用短分支 + PR。
 - 【MUST】提交信息遵循 Conventional Commits：`<type>(<scope>): <subject>`，type 取 `feat` / `fix` / `refactor` / `docs` / `test` / `build` / `ci` / `chore`；subject 简短，中英文皆可。
 - 【MUST】提交前确认可编译、单测通过。
 - 【MUST NOT】提交构建产物与本机状态：`.build/`、`build/`、`*.dmg`、`.DS_Store`、编辑器/Agent 目录（已在 `.gitignore`）。
