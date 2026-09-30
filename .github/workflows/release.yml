@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain
+        run: swift --version
+      - name: Check tag matches Info.plist
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Info.plist version $VERSION"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Release notes
+        run: mkdir -p build && ./scripts/release-notes.sh "$VERSION" > build/release-notes.md
+      - name: Test
+        run: swift build --product TailCatPackageTests && swift test --skip-build
+      - name: Build DMG
+        run: UNIVERSAL=1 ./scripts/make-dmg.sh
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "build/TailCat-$VERSION.dmg" "build/TailCat-$VERSION.dmg.sha256" \
+            --title "TailCat $VERSION" --notes-file build/release-notes.md --verify-tag

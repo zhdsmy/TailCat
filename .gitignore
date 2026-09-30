@@ -1,0 +1,10 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+*.dmg
+.DS_Store
+# Per-machine editor / agent state.
+.vscode/
+.claude/
+.cursor/
