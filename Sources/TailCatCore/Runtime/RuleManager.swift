@@ -50,7 +50,6 @@ public final class RuleManager: ObservableObject {
     private var runnerObservers: [UUID: [AnyCancellable]] = [:]
     private var watchers: [UUID: DirectoryWatcher] = [:]
     private var livePIDs: [String: PIDTracker.Identity] = [:]
-    private let events = SystemEvents()
 
     public init(
         store: RuleStore = RuleStore(directory: RuleStore.defaultDirectory()),
@@ -78,7 +77,7 @@ public final class RuleManager: ObservableObject {
     // MARK: Lifecycle
 
     /// Reaps orphans from a previous run, loads data (migrating inline client addresses into
-    /// remotes), starts `autoStart` rules, and begins listening for wake / network changes.
+    /// remotes) and starts `autoStart` rules.
     public func bootstrap() {
         pids.reapOrphans()
         refreshBinary()
@@ -101,12 +100,10 @@ public final class RuleManager: ObservableObject {
         if adopted { persist() }
 
         for runner in runners where runner.rule.autoStart { runner.start() }
-        events.start { [weak self] reason in self?.restartActive(reason: reason) }
         Task { await refreshTailcatInfo() }
     }
 
     public func shutdown() {
-        events.stop()
         for watcher in watchers.values { watcher.stop() }
         for runner in runners { runner.terminateSynchronously() }
         pids.save([:])

@@ -65,6 +65,7 @@ final class Navigation: ObservableObject {
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUserNotificationCenterDelegate {
     let manager = RuleManager()
     let navigation = Navigation()
+    private let events = SystemEvents()
     private var runnerObserver: AnyCancellable?
 
     override init() {
@@ -86,11 +87,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             }
             AppNotifications.requestAuthorizationIfNeeded()
             manager.bootstrap()
+            events.start { [weak self] reason in self?.manager.restartActive(reason: reason) }
         }
     }
 
     nonisolated func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { manager.shutdown() }
+        MainActor.assumeIsolated {
+            events.stop()
+            manager.shutdown()
+        }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,

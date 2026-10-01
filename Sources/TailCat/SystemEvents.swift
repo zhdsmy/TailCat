@@ -5,15 +5,15 @@ import Network
 /// Fires when the machine wakes from sleep or the network path changes, both of which silently
 /// break WireGuard/DERP sessions that `tailcat forward` will not notice on its own.
 @MainActor
-public final class SystemEvents {
+final class SystemEvents {
     private let monitor = NWPathMonitor()
     private var wakeObserver: NSObjectProtocol?
     private var lastSignature: String?
     private var debounce: Task<Void, Never>?
 
-    public init() {}
+    init() {}
 
-    public func start(debounce interval: TimeInterval = 3, onChange: @escaping @MainActor (String) -> Void) {
+    func start(debounce interval: TimeInterval = 3, onChange: @escaping @MainActor (String) -> Void) {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -42,7 +42,7 @@ public final class SystemEvents {
         }
     }
 
-    public func stop() {
+    func stop() {
         monitor.cancel()
         if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
         debounce?.cancel()
