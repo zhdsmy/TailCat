@@ -47,6 +47,12 @@ enum Snapshot {
         try await renderer.page("empty-manage", ManageView(), in: empty, size: CGSize(width: 900, height: 520))
         try await renderer.page("empty-settings", SettingsView(), in: empty)
 
+        let ready = try SampleWorld(tailcatInstalled: true)
+        defer { ready.tearDown() }
+        ready.manager.bootstrap()
+        try await Task.sleep(nanoseconds: 500_000_000)
+        try await renderer.page("empty-ready", ManageView(), in: ready, size: CGSize(width: 900, height: 520))
+
         let unreadable = try SampleWorld(tailcatInstalled: false)
         defer { unreadable.tearDown() }
         try SecureFile.write(Data(#"{"version":999,"futureItems":[]}"#.utf8),
@@ -74,10 +80,24 @@ enum Snapshot {
         try await manage("serve", .rule(sample.serveID), height: 900)
         try await manage("remote", .remote(sample.macMiniID), height: 900)
         try await manage("keys", .keys, height: 700)
+        try await renderer.page("keys-help", KeysView(keyHelpExpanded: true), in: sample,
+                                size: CGSize(width: 670, height: 700))
         try await manage("contacts", .contacts, height: 500)
+        try await manage("guide-connect", .help, height: 620)
+        for (name, topic) in [("share", UsageGuide.Topic.share), ("files", .files), ("troubleshoot", .troubleshoot)] {
+            try await renderer.page("guide-\(name)", UsageGuide(onAddRemote: {}, onNewRule: { _ in }, topic: topic),
+                                    in: sample, size: CGSize(width: 670, height: 620))
+        }
+        try await page("copy-feedback", CopyButton(text: "brew install tailcat", label: "复制安装命令", copied: true).padding())
+        try await renderer.page("file-browser-help", FileBrowser(identity: ClientIdentity(address: SampleWorld.macMiniAddress),
+                                                                 guidanceExpanded: true).padding()
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading),
+                                in: sample, size: CGSize(width: 650, height: 260))
         try await page("settings", SettingsView())
         if let rule = manager.runner(id: sample.forwardID)?.rule {
             try await page("editor-forward", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts) { _ in true })
+            try await page("editor-forward-examples", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts,
+                                                                 mappingExamplesExpanded: true) { _ in true })
             try await page("editor-rule-save-failed", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts,
                                                                  saveError: "保存失败：数据文件暂时无法写入，请重试。") { _ in false })
             try await page("editor-import-failed", RuleEditor(rule: rule.duplicate(), isNew: true, contacts: manager.contacts,
@@ -91,9 +111,16 @@ enum Snapshot {
         }
         if let rule = manager.runner(id: sample.serveID)?.rule {
             try await page("editor-serve", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts) { _ in true })
+            var shared = rule
+            shared.filesDir = "/Users/me/Shared"
+            shared.filesMode = .woPlus
+            try await page("editor-shared-directory", RuleEditor(rule: shared, isNew: false, contacts: manager.contacts) { _ in true })
         }
         if let remote = manager.remote(id: sample.macMiniID) {
             try await page("editor-remote", RemoteEditor(remote: remote, isNew: false) { _ in true })
+            var dnsRemote = remote
+            dnsRemote.address = "home.example.com"
+            try await page("editor-remote-dns", RemoteEditor(remote: dnsRemote, isNew: false) { _ in true })
             try await page("editor-remote-save-failed", RemoteEditor(remote: remote, isNew: false,
                                                                    saveError: "保存失败：数据文件暂时无法写入，请重试。") { _ in false })
         }

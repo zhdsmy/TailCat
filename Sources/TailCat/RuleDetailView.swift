@@ -136,22 +136,29 @@ struct RuleDetail: View {
     // MARK: Client kinds
 
     private var connectionBox: some View {
-        GroupBox("连接") {
-            HStack {
-                if let remote {
-                    Text("远端")
-                    Button(remote.name) { onShowRemote(remote.id) }.buttonStyle(.link)
-                } else {
-                    Text("未指定出口远端：通过 <地址>.tailcat 主机名访问各服务端").foregroundStyle(.secondary)
+        GroupBox("连接探测") {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    if let remote {
+                        Text("远端")
+                        Button(remote.name) { onShowRemote(remote.id) }.buttonStyle(.link)
+                    } else {
+                        Text("未指定出口远端：通过 <地址>.tailcat 主机名访问各服务端").foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if remote != nil {
+                        Text(rule.healthCheck ? "定期探测已开启" : "定期探测已关闭")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Button("测试连接") { Task { await runner.runPing() } }.disabled(runner.pingBusy)
+                        Button("等待直连") { Task { await runner.runPing(untilDirect: true, timeoutSeconds: 20) } }
+                            .disabled(runner.pingBusy)
+                            .help("等待直连探测；超时不代表远端离线，中继仍可使用。")
+                        if runner.pingBusy { ProgressView().controlSize(.small) }
+                    }
                 }
-                Spacer()
                 if remote != nil {
-                    Text(rule.healthCheck ? "运行时定期健康检查" : "健康检查已关闭")
+                    Text("“已启动”表示本机规则在运行；探测成功不代表远端的具体服务可用。中继连接也可使用。")
                         .font(.caption).foregroundStyle(.secondary)
-                    Button("测试连接") { Task { await runner.runPing() } }.disabled(runner.pingBusy)
-                    Button("等待直连") { Task { await runner.runPing(untilDirect: true, timeoutSeconds: 20) } }
-                        .disabled(runner.pingBusy)
-                    if runner.pingBusy { ProgressView().controlSize(.small) }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,15 +179,14 @@ struct RuleDetail: View {
                             Text(listener.hostPort).font(.body.monospaced()).textSelection(.enabled)
                             Text("→ \(listener.targetLabel)").foregroundStyle(.secondary)
                             Spacer()
-                            Button("复制") { Clipboard.copy(listener.hostPort) }
+                            CopyButton(text: listener.hostPort, label: "复制", iconOnly: false)
                             Button("浏览器") {
                                 if let url = URL(string: "http://\(listener.hostPort)") { NSWorkspace.shared.open(url) }
                             }
                             if listener.target == "22" || listener.target.hasSuffix(":22") {
-                                Button("复制 SSH 命令") {
-                                    let user = remote?.sshUser ?? ""
-                                    Clipboard.copy("ssh -p \(listener.port) \(user.isEmpty ? "" : user + "@")\(listener.host)")
-                                }
+                                let user = remote?.sshUser ?? ""
+                                CopyButton(text: "ssh -p \(listener.port) \(user.isEmpty ? "" : user + "@")\(listener.host)",
+                                           label: "复制 SSH 命令", iconOnly: false)
                             }
                         }
                         .controlSize(.small)
@@ -197,8 +203,8 @@ struct RuleDetail: View {
                 if let socks = runner.socksAddress {
                     CopyableText(text: socks)
                     HStack {
-                        Button("复制 export all_proxy=…") { Clipboard.copy("export all_proxy=\(socks)") }
-                        Button("复制 curl 示例") { Clipboard.copy("curl -x \(socks) http://server.tailcat/") }
+                        CopyButton(text: "export all_proxy=\(socks)", label: "复制 export all_proxy=…", iconOnly: false)
+                        CopyButton(text: "curl -x \(socks) http://server.tailcat/", label: "复制 curl 示例", iconOnly: false)
                     }
                 } else {
                     Text("监听 \(rule.socksListen)，启动后显示代理地址").foregroundStyle(.secondary)
@@ -218,7 +224,7 @@ struct RuleDetail: View {
                 if let address = runner.serverAddress {
                     HStack(alignment: .firstTextBaseline) {
                         CopyableText(text: address, font: .title3.monospaced(), lineLimit: 3, secret: true,
-                                     sharedReveal: $revealAddress)
+                                     sharedReveal: $revealAddress, copyLabel: "复制完整地址")
                         Spacer()
                         Button { revealAddress.toggle() } label: {
                             Label(revealAddress ? "隐藏地址" : "显示地址", systemImage: revealAddress ? "eye.slash" : "eye")
@@ -226,10 +232,12 @@ struct RuleDetail: View {
                         .controlSize(.small)
                     }
                     switch runner.serverIdentity {
-                    case .saved(let name): Text("身份：已保存的 key「\(name)」，地址固定").font(.caption).foregroundStyle(.secondary)
-                    case .ephemeral: Text("身份：临时 key").font(.caption).foregroundStyle(.secondary)
+                    case .saved(let name): Text("身份：已保存的服务端密钥「\(name)」").font(.caption).foregroundStyle(.secondary)
+                    case .ephemeral: Text("身份：临时服务端密钥（重启后地址会变化）").font(.caption).foregroundStyle(.secondary)
                     case nil: EmptyView()
                     }
+                    Text("长期分享或用于 DNS 时，建议固定中继区域。")
+                        .font(.caption).foregroundStyle(.secondary)
                     let commands = rule.peerCommands(serverAddress: address)
                     if !commands.isEmpty {
                         Divider()
@@ -239,8 +247,9 @@ struct RuleDetail: View {
                         }
                     }
                 } else if !rule.key.isEmpty, rule.key != "new", let cached = manager.keyMeta(name: rule.key)?.address {
-                    Text("未运行。key「\(rule.key)」上次的地址：").foregroundStyle(.secondary)
-                    CopyableText(text: cached, font: .body.monospaced(), lineLimit: 2, secret: true)
+                    Text("未运行。密钥「\(rule.key)」上次记录的地址：").foregroundStyle(.secondary)
+                    CopyableText(text: cached, font: .body.monospaced(), lineLimit: 2, secret: true,
+                                 copyLabel: "复制完整地址")
                 } else {
                     Text(runner.state.isActive ? "等待服务端输出地址…" : "启动后显示地址").foregroundStyle(.secondary)
                 }
@@ -315,7 +324,9 @@ struct RuleDetail: View {
                     HStack {
                         Text("新收到 \(received.count) 项").font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("清除") { manager.clearInbox(id: rule.id) }.buttonStyle(.link)
+                        Button("清除记录") { manager.clearInbox(id: rule.id) }
+                            .buttonStyle(.link)
+                            .help("只清除列表记录，不会删除收件箱中的文件。")
                     }
                     ForEach(received, id: \.self) { name in
                         Button(name) {

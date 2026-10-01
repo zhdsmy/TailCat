@@ -8,6 +8,7 @@ enum SidebarItem: Hashable {
     case remote(UUID)
     case keys
     case contacts
+    case help
 }
 
 private struct RuleDraft: Identifiable {
@@ -72,6 +73,7 @@ struct ManageView: View {
                     Section("工具") {
                         Label("密钥", systemImage: "key").tag(SidebarItem.keys)
                         Label("通讯录", systemImage: "person.2").tag(SidebarItem.contacts)
+                        Label("使用说明", systemImage: "questionmark.circle").tag(SidebarItem.help)
                     }
                 }
                 .listStyle(.sidebar)
@@ -157,6 +159,9 @@ struct ManageView: View {
             KeysView()
         case .contacts:
             ContactsView()
+        case .help:
+            UsageGuide(onAddRemote: { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) },
+                       onNewRule: { newRule($0) })
         case nil:
             placeholder
         }
@@ -167,19 +172,20 @@ struct ManageView: View {
             if manager.binaryPath == nil { MissingTailcat() }
             if manager.runners.isEmpty && manager.remotes.isEmpty {
                 VStack(spacing: 8) {
-                    Text("还没有任何规则").font(.title3)
-                    Text("转发：把远端机器的端口映射到本机；服务：把本机的端口、目录或 SSH 提供给别人。")
+                    Text("从你想做的事开始").font(.title3)
+                    Text("连接对方：添加远端 → 配置转发 → 启动并访问本地地址。\n分享本机：新建服务或收件箱 → 启动 → 把地址发给对方。")
                         .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     HStack {
-                        Button("新建转发…") { newRule(.forward) }
-                        Button("新建服务…") { newRule(.serve) }
-                        Button("添加远端…") { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
+                        Button("连接别人的设备…") { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
+                        Button("共享本机服务…") { newRule(.serve) }
+                        Button("接收文件…") { newRule(.recv) }
                     }
                     .padding(.top, 4)
                 }
             } else {
                 Text("选择左侧项目，或点 + 新增转发、服务、收件箱或远端").foregroundStyle(.secondary)
             }
+            Button("查看使用说明") { navigation.selection = .help }.buttonStyle(.link)
         }
         .frame(maxWidth: 480)
         .padding()
