@@ -40,6 +40,10 @@ public struct TailcatCapabilities: Equatable, Sendable {
     /// `tailcat perf` and the `perf` service landed after v0.7.0.
     public var perf: Bool
 
+    /// serve's `port:target` mappings (`8080:80`) landed in the same post-v0.7.0 batch, just before
+    /// perf. Their help text gives nothing stable to probe, so they follow perf's detection.
+    public var serveMappings: Bool { perf }
+
     public init(perf: Bool = false) {
         self.perf = perf
     }

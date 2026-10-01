@@ -57,6 +57,7 @@ public enum RuleIssue: Error, Equatable, Sendable, CustomStringConvertible {
     case invalidKey
     case noServices
     case invalidService(String)
+    case serveMappingUnsupported(String)
     case sshNeedsAuthorizedKeys
     case invalidAuthorizedKeys
     case unsupportedKeySource(String)
@@ -78,6 +79,7 @@ public enum RuleIssue: Error, Equatable, Sendable, CustomStringConvertible {
         case .invalidKey: return "Key 名称不能含空白；路径可含空格。均不能以 - 开头或含换行、空字符"
         case .noServices: return "至少需要一项服务（端口、服务名、共享目录或 exec 命令）"
         case .invalidService(let s): return "无效的服务项：\(s)"
+        case .serveMappingUnsupported(let s): return "当前 tailcat 版本不支持端口映射：\(s)。请只写端口（如 8080），或升级 tailcat 后在设置里重新检测"
         case .sshNeedsAuthorizedKeys: return "ssh 服务必须配置授权公钥来源（--ssh-authorized-keys）"
         case .invalidAuthorizedKeys: return "授权公钥来源不能含换行，也不能以 - 开头"
         case .unsupportedKeySource(let s): return "tailcat 不支持这种公钥来源：\(s)（GitHub 账号写成 用户名@github）"
@@ -256,7 +258,8 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
 
     // MARK: Validation
 
-    public func validate() -> [RuleIssue] {
+    /// `capabilities` (when known) rejects options the installed tailcat would refuse at startup.
+    public func validate(capabilities: TailcatCapabilities? = nil) -> [RuleIssue] {
         var issues: [RuleIssue] = []
         if name.trimmingCharacters(in: .whitespaces).isEmpty { issues.append(.emptyName) }
         if !key.isEmpty && !Self.isSafeKey(key) { issues.append(.invalidKey) }
@@ -272,6 +275,11 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
             let services = cleanedServices
             if services.isEmpty && filesDir.isEmpty && cleanedExecArgs.isEmpty { issues.append(.noServices) }
             for s in services where !ServeItem.isValid(s) { issues.append(.invalidService(s)) }
+            if let capabilities, !capabilities.serveMappings {
+                for s in services where s.contains(":") && ServeItem.isValid(s) {
+                    issues.append(.serveMappingUnsupported(s))
+                }
+            }
             let sshKeys = sshAuthorizedKeys.trimmingCharacters(in: .whitespaces)
             if services.contains("ssh") && sshKeys.isEmpty { issues.append(.sshNeedsAuthorizedKeys) }
             if sshKeys.hasPrefix("-") || sshKeys.contains(where: \.isNewline) { issues.append(.invalidAuthorizedKeys) }

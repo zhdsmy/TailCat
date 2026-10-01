@@ -131,6 +131,8 @@ import Testing
         #expect(!TailcatCapabilities.from(version: TailcatVersion(0, 7, 0)).perf)
         #expect(TailcatCapabilities.from(version: TailcatVersion(0, 7, 1)).perf)
         #expect(!TailcatCapabilities.from(version: nil).perf)
+        #expect(!TailcatCapabilities.from(version: TailcatVersion(0, 7, 0)).serveMappings)
+        #expect(TailcatCapabilities.from(version: TailcatVersion(0, 8, 0)).serveMappings)
     }
 }
 

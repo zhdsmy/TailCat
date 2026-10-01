@@ -29,10 +29,10 @@ struct SettingsView: View {
                         .help(manager.binaryPath ?? "")
                 }
                 LabeledContent("版本") { Text(manager.versionText ?? "未知").font(.body.monospaced()) }
-                LabeledContent("perf 测速") {
+                LabeledContent("perf 测速与服务端口映射") {
                     Text(manager.capabilities.perf ? "支持" : "当前版本不支持")
                         .foregroundStyle(manager.capabilities.perf ? .primary : .secondary)
-                        .help(manager.capabilities.perf ? "" : "安装支持 perf 的 tailcat 版本后，点击“重新检测”。")
+                        .help(manager.capabilities.perf ? "" : "安装支持 perf 与 8080:80 映射的 tailcat 版本后，点击“重新检测”。")
                 }
                 TextField(text: $customPath, prompt: Text("/opt/homebrew/bin/tailcat")) {
                     Text("自定义路径").font(.body)
