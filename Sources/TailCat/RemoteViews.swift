@@ -439,10 +439,12 @@ struct RemoteEditor: View {
     @Environment(\.dismiss) private var dismiss
     @ViewState private var remote: Remote
     let isNew: Bool
-    let onSave: (Remote) -> Void
+    /// Returns false when the remote could not be saved; the sheet then stays open.
+    let onSave: (Remote) -> Bool
     @ViewState private var issues: [RemoteIssue] = []
+    @ViewState private var saveError: String?
 
-    init(remote: Remote, isNew: Bool, onSave: @escaping (Remote) -> Void) {
+    init(remote: Remote, isNew: Bool, onSave: @escaping (Remote) -> Bool) {
         _remote = State(initialValue: remote)
         self.isNew = isNew
         self.onSave = onSave
@@ -475,6 +477,7 @@ struct RemoteEditor: View {
             if !issues.isEmpty {
                 ForEach(issues.map(\.description), id: \.self) { Text($0).foregroundStyle(.red).font(.caption) }
             }
+            if let saveError { Text(saveError).foregroundStyle(.red).font(.caption) }
             HStack {
                 if isNew {
                     Button("从剪贴板粘贴地址") {
@@ -500,7 +503,10 @@ struct RemoteEditor: View {
         c.sshUser = c.sshUser.trimmingCharacters(in: .whitespaces)
         issues = c.validate()
         guard issues.isEmpty else { return }
-        onSave(c)
+        guard onSave(c) else {
+            saveError = manager.loadError ?? "保存失败"
+            return
+        }
         dismiss()
     }
 }

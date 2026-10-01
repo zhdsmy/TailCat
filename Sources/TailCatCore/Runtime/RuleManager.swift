@@ -178,15 +178,20 @@ public final class RuleManager: ObservableObject {
         rules.filter { $0.remoteID == id }
     }
 
-    public func saveRemote(_ remote: Remote) {
+    /// Saves to disk before the remote becomes visible: rules that pick it up drop their own copy
+    /// of the address. Returns false (and sets `loadError`) when the save failed.
+    @discardableResult
+    public func saveRemote(_ remote: Remote) -> Bool {
         let old = self.remote(id: remote.id)
-        if let i = remotes.firstIndex(where: { $0.id == remote.id }) {
-            remotes[i] = remote
+        var updated = remotes
+        if let i = updated.firstIndex(where: { $0.id == remote.id }) {
+            updated[i] = remote
         } else {
-            remotes.append(remote)
+            updated.append(remote)
         }
+        guard persist(updated, to: remoteStore) else { return false }
+        remotes = updated
         remoteDirectory.set(remotes)
-        persistRemotes()
         // Only address and key reach the tailcat command line.
         if let old, old.address != remote.address || old.key != remote.key {
             remotePings[remote.id] = nil
@@ -194,16 +199,17 @@ public final class RuleManager: ObservableObject {
                 runner.restart(reason: "远端「\(remote.name)」已修改")
             }
         }
+        return true
     }
 
-    /// Refuses while rules still reference the remote.
+    /// Refuses while rules still reference the remote, or when the save fails.
     @discardableResult
     public func removeRemote(id: UUID) -> Bool {
-        guard rules(usingRemote: id).isEmpty else { return false }
+        guard rules(usingRemote: id).isEmpty,
+              persist(remotes.filter { $0.id != id }, to: remoteStore) else { return false }
         remotes.removeAll { $0.id == id }
         remotePings[id] = nil
         remoteDirectory.set(remotes)
-        persistRemotes()
         return true
     }
 
@@ -336,10 +342,6 @@ public final class RuleManager: ObservableObject {
 
     private func persist() {
         do { try store.save(rules) } catch { loadError = "保存失败：\(error.localizedDescription)" }
-    }
-
-    private func persistRemotes() {
-        persist(remotes, to: remoteStore)
     }
 
     @discardableResult

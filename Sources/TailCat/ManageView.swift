@@ -94,8 +94,9 @@ struct ManageView: View {
         }
         .sheet(item: $remoteDraft) { draft in
             RemoteEditor(remote: draft.remote, isNew: draft.isNew) { saved in
-                manager.saveRemote(saved)
+                guard manager.saveRemote(saved) else { return false }
                 navigation.selection = .remote(saved.id)
+                return true
             }
         }
         .sheet(isPresented: $showWizard) { DNSWizard() }

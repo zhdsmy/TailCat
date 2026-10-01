@@ -346,6 +346,37 @@ private func fakeTailcat() throws -> (URL, TailcatCLI) {
         #expect(try RuleStore(directory: dir).load().map(\.address) == ["tcWEB", "tcDB"])
     }
 
+    @Test func failedRemoteSaveLeavesNothingToReference() throws {
+        let dir = tempDir()
+        let remotesFile = dir.appendingPathComponent("remotes.json")
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: remotesFile.path)
+            try? FileManager.default.removeItem(at: dir)
+        }
+        let m = manager(dir: dir) { _ in "exit 0" }
+        m.bootstrap()
+        defer { m.shutdown() }
+        let box = Remote(name: "box", address: "tcBOX")
+        #expect(m.saveRemote(box))
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: remotesFile.path)
+
+        // Neither a new remote nor an edit may exist only in memory: a rule picking it up would be
+        // saved with its address cleared.
+        let nas = Remote(name: "nas", address: "tcNAS")
+        #expect(!m.saveRemote(nas))
+        var moved = box
+        moved.address = "tcMOVED"
+        #expect(!m.saveRemote(moved))
+        #expect(m.remotes == [box])
+        #expect(m.remoteDirectory.remote(id: nas.id) == nil)
+        #expect(m.remoteDirectory.remote(id: box.id) == box)
+
+        m.add(TunnelRule(name: "nas", address: "tcNAS", mappings: ["80"]))
+        #expect(try RuleStore(directory: dir).load()[0].address == "tcNAS")
+        #expect(!m.removeRemote(id: box.id))
+        #expect(m.remotes == [box])
+    }
+
     @Test func failedHealthCheckMarksRemoteDown() async {
         final class Switch: @unchecked Sendable { var up = true }
         let remoteUp = Switch()

@@ -75,7 +75,7 @@ enum Snapshot {
             try await page("editor-serve", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts) { _ in })
         }
         if let remote = manager.remote(id: sample.macMiniID) {
-            try await page("editor-remote", RemoteEditor(remote: remote, isNew: false) { _ in })
+            try await page("editor-remote", RemoteEditor(remote: remote, isNew: false) { _ in true })
         }
         try await page("editor-new-socks", RuleEditor(rule: TunnelRule(kind: .socks), isNew: true, contacts: manager.contacts) { _ in })
         try await page("editor-new-recv", RuleEditor(rule: TunnelRule(kind: .recv), isNew: true, contacts: manager.contacts) { _ in })
