@@ -24,19 +24,17 @@ public enum SecureFile {
         let directory = url.deletingLastPathComponent()
         try fm.createDirectory(at: directory, withIntermediateDirectories: true,
                                attributes: [.posixPermissions: 0o700])
+        // createDirectory leaves an existing directory's mode alone.
+        try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
         let tmp = directory.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
         guard fm.createFile(atPath: tmp.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
             throw CocoaError(.fileWriteUnknown)
         }
-        do {
-            if fm.fileExists(atPath: url.path) {
-                _ = try fm.replaceItemAt(url, withItemAt: tmp)
-            } else {
-                try fm.moveItem(at: tmp, to: url)
-            }
-        } catch {
+        // rename(2) keeps the temp file's 0600; replaceItemAt would carry over the old file's mode.
+        guard rename(tmp.path, url.path) == 0 else {
+            let code = POSIXErrorCode(rawValue: errno) ?? .EIO
             try? fm.removeItem(at: tmp)
-            throw error
+            throw POSIXError(code)
         }
     }
 

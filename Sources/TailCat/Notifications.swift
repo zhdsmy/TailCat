@@ -16,11 +16,12 @@ enum AppNotifications {
         }
     }
 
+    /// Banners show up in screenshots and screen sharing, so addresses are masked like on screen.
     static func post(title: String, body: String, reveal: URL? = nil) {
         guard AppSettings().notificationsEnabled else { return }
         let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
+        content.title = Diagnostics.mask(title)
+        content.body = Diagnostics.mask(body)
         content.sound = .default
         if let reveal { content.userInfo = [revealKey: reveal.path] }
         let request = UNNotificationRequest(

@@ -346,6 +346,13 @@ let sampleKey = "nodekey:" + String(repeating: "ab", count: 32)
         #expect(KeyMeta(name: "mystery").effectiveRole == nil)
         #expect(KeyMeta(name: "client-x", role: .server).effectiveRole == .server)
     }
+
+    @Test func cliErrorsAreMasked() {
+        let addr = "tc" + String(repeating: "A", count: 40)
+        let err = CLIError("invalid address \"\(addr)\"")
+        #expect(!err.message.contains(addr))
+        #expect(err.message.hasPrefix("invalid address \"tcAAAA…"))
+    }
 }
 
 @Suite struct BackoffTests {
@@ -397,6 +404,24 @@ func tempDir() -> URL {
         #expect((folder[.posixPermissions] as? Int) == 0o700)
         let leftovers = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".tmp") }
         #expect(leftovers.isEmpty)
+    }
+
+    @Test func tightensLooseExistingPermissions() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let fm = FileManager.default
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+        let store = RuleStore(directory: dir)
+        try Data("{}".utf8).write(to: store.fileURL)
+        try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: store.fileURL.path)
+
+        try store.save([])
+        #expect((try fm.attributesOfItem(atPath: store.fileURL.path)[.posixPermissions] as? Int) == 0o600)
+        #expect((try fm.attributesOfItem(atPath: dir.path)[.posixPermissions] as? Int) == 0o700)
+        // pids.json goes through the same path, and is usually the first file written.
+        PIDTracker(directory: dir).save([:])
+        let pids = dir.appendingPathComponent("pids.json").path
+        #expect((try fm.attributesOfItem(atPath: pids)[.posixPermissions] as? Int) == 0o600)
     }
 
     @Test func loadsVersion1File() throws {

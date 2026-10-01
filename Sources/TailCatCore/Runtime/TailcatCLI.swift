@@ -2,7 +2,8 @@ import Foundation
 
 public struct CLIError: Error, Equatable, Sendable, CustomStringConvertible {
     public var message: String
-    public init(_ message: String) { self.message = message }
+    /// tailcat echoes rejected input, addresses included, and these messages end up on screen.
+    public init(_ message: String) { self.message = Diagnostics.mask(message) }
     public var description: String { message }
 
     static let binaryNotFound = CLIError(LaunchError.binaryNotFound.description)
