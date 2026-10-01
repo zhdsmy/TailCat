@@ -57,6 +57,7 @@ public enum RuleIssue: Error, Equatable, Sendable, CustomStringConvertible {
     case invalidKey
     case noServices
     case invalidService(String)
+    case capabilitiesPending
     case serveMappingUnsupported(String)
     case sshNeedsAuthorizedKeys
     case invalidAuthorizedKeys
@@ -79,6 +80,7 @@ public enum RuleIssue: Error, Equatable, Sendable, CustomStringConvertible {
         case .invalidKey: return "Key 名称不能含空白；路径可含空格。均不能以 - 开头或含换行、空字符"
         case .noServices: return "至少需要一项服务（端口、服务名、共享目录或 exec 命令）"
         case .invalidService(let s): return "无效的服务项：\(s)"
+        case .capabilitiesPending: return "正在检测 tailcat 功能，请稍后再保存。"
         case .serveMappingUnsupported(let s): return "当前 tailcat 版本不支持端口映射：\(s)。请只写端口（如 8080），或升级 tailcat 后在设置里重新检测"
         case .sshNeedsAuthorizedKeys: return "ssh 服务必须配置授权公钥来源（--ssh-authorized-keys）"
         case .invalidAuthorizedKeys: return "授权公钥来源不能含换行，也不能以 - 开头"

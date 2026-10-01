@@ -13,8 +13,8 @@ public final class DirectoryWatcher {
     private let onNewItems: ([String]) -> Void
     private var source: DispatchSourceFileSystemObject?
     private var known: Set<String> = []
-    /// New items not yet reported, with what they looked like at the last check.
-    private var pending: [String: Fingerprint] = [:]
+    /// New items not yet reported, with their last change time.
+    private var pending: [String: PendingItem] = [:]
     private var settleTask: Task<Void, Never>?
 
     public init(url: URL, quietPeriod: TimeInterval = 2, onNewItems: @escaping ([String]) -> Void) {
@@ -46,35 +46,67 @@ public final class DirectoryWatcher {
     }
 
     /// Internal so tests can step the watcher without depending on timing.
-    func rescan() {
-        let now = Self.listing(url)
-        for name in now.subtracting(known) { pending[name] = fingerprint(name) }
-        known = now
-        scheduleSettle()
+    func rescan(now: ContinuousClock.Instant = ContinuousClock().now) {
+        let names = Self.listing(url)
+        for name in Array(pending.keys) {
+            guard let item = pending[name] else { continue }
+            guard let current = fingerprint(name) else { pending[name] = nil; continue }
+            if current != item.fingerprint {
+                pending[name] = PendingItem(fingerprint: current, quietSince: now)
+            }
+        }
+        for name in names.subtracting(known) {
+            if let current = fingerprint(name) {
+                pending[name] = PendingItem(fingerprint: current, quietSince: now)
+            }
+        }
+        known = names
+        scheduleSettle(now: now)
     }
 
-    private func scheduleSettle() {
-        guard settleTask == nil, !pending.isEmpty else { return }
-        let delay = UInt64(quietPeriod * 1_000_000_000)
+    private func scheduleSettle(now: ContinuousClock.Instant) {
+        guard !pending.isEmpty else {
+            settleTask?.cancel()
+            settleTask = nil
+            return
+        }
+        guard settleTask == nil else { return }
+        let quietDuration = Duration.seconds(quietPeriod)
+        guard let next = pending.values.map({ $0.quietSince.advanced(by: quietDuration) }).min() else { return }
+        let delay = max(.zero, now.duration(to: next))
         settleTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: delay)
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             self?.settle()
         }
     }
 
-    func settle() {
+    func settle(now: ContinuousClock.Instant = ContinuousClock().now) {
         settleTask?.cancel()
         settleTask = nil
         var settled: [String] = []
-        for (name, last) in pending {
-            let current = fingerprint(name)
-            if current == nil { pending[name] = nil }  // removed before it finished
-            else if current == last { settled.append(name); pending[name] = nil }
-            else { pending[name] = current }
+        for name in Array(pending.keys) {
+            guard let item = pending[name] else { continue }
+            guard let current = fingerprint(name) else {
+                pending[name] = nil  // removed before it finished
+                continue
+            }
+            if current == item.fingerprint {
+                if item.quietSince.duration(to: now) >= .seconds(quietPeriod) {
+                    settled.append(name)
+                    pending[name] = nil
+                }
+            } else {
+                pending[name] = PendingItem(fingerprint: current, quietSince: now)
+            }
         }
         if !settled.isEmpty { onNewItems(settled.sorted()) }
-        scheduleSettle()
+        scheduleSettle(now: now)
+    }
+
+    private struct PendingItem {
+        var fingerprint: Fingerprint
+        var quietSince: ContinuousClock.Instant
     }
 
     private struct Fingerprint: Equatable {

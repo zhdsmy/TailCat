@@ -40,6 +40,17 @@ enum Snapshot {
         try await capturePopulated(full, renderer)
         try await captureLayoutCases(renderer)
 
+        // Keep detection pending without delaying fake subprocesses or using real user data.
+        let pending = try SampleWorld(tailcatInstalled: true)
+        defer { pending.tearDown() }
+        pending.manager.refreshBinary()
+        try await renderer.page("capability-pending-settings", SettingsView(settings: pending.settings, snapshotMode: true), in: pending)
+        try await renderer.page("capability-pending-serve", RuleEditor(
+            rule: TunnelRule(name: "本机网页", kind: .serve, services: ["8080:80"]), isNew: true, contacts: []) { _ in false }, in: pending)
+        try await renderer.page("capability-pending-dns", DNSWizard(address: SampleWorld.serveAddress, domain: "home.example.com", useSSH: true), in: pending)
+        try await renderer.page("capability-pending-perf", PerfPanel(identity: ClientIdentity(address: SampleWorld.macMiniAddress))
+            .padding().frame(width: 460), in: pending)
+
         let empty = try SampleWorld(tailcatInstalled: false)
         defer { empty.tearDown() }
         empty.manager.bootstrap()
@@ -171,6 +182,7 @@ enum Snapshot {
         let perf = try SampleWorld(tailcatInstalled: true, supportsPerf: true)
         defer { perf.tearDown() }
         try await perf.populate()
+        try await renderer.page("audit-serve-mapping-supported", RuleEditor(rule: mapped, isNew: false, contacts: perf.manager.contacts) { _ in true }, in: perf)
         let report = PerfReport.decode(#"{"path":{"direct":true,"endpoint":"192.168.1.20:41641","rtt":3000000},"params":{"proto":"udp","dir":"both","streams":4,"length":1200,"interval":1000000000},"clientSent":{"bytes":60000000,"datagrams":50000,"duration":3000000000,"intervals":[{"bytes":10000000},{"bytes":20000000},{"bytes":30000000}]},"serverReceived":{"bytes":58800000,"datagrams":49000,"duration":3000000000,"jitter":1000000},"rtt":{"min":1000000,"avg":3000000,"max":12000000,"count":50}}"#)!
         try await renderer.page("audit-perf-ready", ScrollView { PerfPanel(identity: identity).padding() }, in: perf, size: CGSize(width: 460, height: 420))
         try await renderer.page("audit-perf-result", ScrollView { PerfPanel(identity: identity, report: report).padding() }, in: perf, size: CGSize(width: 460, height: 620))
