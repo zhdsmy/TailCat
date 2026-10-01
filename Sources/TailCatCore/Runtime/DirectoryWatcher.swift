@@ -45,7 +45,8 @@ public final class DirectoryWatcher {
         pending = [:]
     }
 
-    private func rescan() {
+    /// Internal so tests can step the watcher without depending on timing.
+    func rescan() {
         let now = Self.listing(url)
         for name in now.subtracting(known) { pending[name] = fingerprint(name) }
         known = now
@@ -62,7 +63,8 @@ public final class DirectoryWatcher {
         }
     }
 
-    private func settle() {
+    func settle() {
+        settleTask?.cancel()
         settleTask = nil
         var settled: [String] = []
         for (name, last) in pending {

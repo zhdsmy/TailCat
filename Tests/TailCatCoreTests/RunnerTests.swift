@@ -646,7 +646,8 @@ private func fakeTailcat() throws -> (URL, TailcatCLI) {
         m.runners[0].start()
         try await Task.sleep(nanoseconds: 100_000_000)
         try Data("hi".utf8).write(to: inbox.appendingPathComponent("hello.txt"))
-        #expect(await waitUntil { m.inbox[id] == ["hello.txt"] })
+        // New files are reported after a 2 s quiet period, up to two of them on a busy machine.
+        #expect(await waitUntil(timeout: 15) { m.inbox[id] == ["hello.txt"] })
         #expect(received.map(\.lastPathComponent) == ["hello.txt"])
         m.clearInbox(id: id)
         #expect(m.inbox[id] == nil)
