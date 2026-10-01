@@ -7,7 +7,7 @@ extension RunState {
         switch self {
         case .stopped: return "已停止"
         case .starting: return "启动中…"
-        case .running: return "运行中"
+        case .running: return "已启动"
         case .reconnecting(let attempt, let retryAt, _):
             let secs = max(0, Int(retryAt.timeIntervalSinceNow.rounded(.up)))
             return "重连中（第 \(attempt) 次，\(secs)s 后）"
@@ -90,6 +90,7 @@ struct CopyableText: View {
     /// Several rows showing the same address follow one toggle owned by the caller; such rows show
     /// no eye button of their own.
     var sharedReveal: Binding<Bool>?
+    var copyLabel: String? = nil
     @ViewState private var ownReveal = false
 
     private var revealed: Bool { sharedReveal?.wrappedValue ?? ownReveal }
@@ -105,11 +106,38 @@ struct CopyableText: View {
                 Button { ownReveal.toggle() } label: { Image(systemName: ownReveal ? "eye.slash" : "eye") }
                     .buttonStyle(.borderless)
                     .help(ownReveal ? "隐藏" : "显示完整内容")
+                    .accessibilityLabel(ownReveal ? "隐藏完整内容" : "显示完整内容")
             }
-            Button { Clipboard.copy(text) } label: { Image(systemName: "doc.on.doc") }
+            CopyButton(text: text, label: copyLabel ?? (secret ? "复制完整内容" : "复制"))
                 .buttonStyle(.borderless)
-                .help("复制")
         }
+    }
+}
+
+struct CopyButton: View {
+    let text: String
+    var label = "复制"
+    var iconOnly = true
+    @ViewState var copied = false
+
+    var body: some View {
+        Button {
+            Clipboard.copy(text)
+            copied = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                if copied || !iconOnly { Text(copied ? "已复制" : label) }
+            }
+        }
+        .help(label)
+        .accessibilityLabel(copied ? "已复制" : label)
+        .task(id: copied) {
+            guard copied else { return }
+            do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
+            copied = false
+        }
+        .onChange(of: text) { _ in copied = false }
     }
 }
 
@@ -123,11 +151,14 @@ struct MissingTailcat: View {
             Label("未找到 tailcat", systemImage: "exclamationmark.triangle.fill")
                 .font(compact ? .callout.weight(.semibold) : .headline).foregroundStyle(.red)
             if !compact {
-                Text("TailCat 通过 tailcat 命令行工作。安装后点“重新检测”，或在设置里指定路径。")
-                    .font(.callout).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("已安装 Homebrew 时，将下方命令复制到“终端”执行。")
+                    Text("完成后点“重新检测”；已有 tailcat 可在设置中指定路径。")
+                }
+                .font(.callout).foregroundStyle(.secondary)
             }
             HStack {
-                CopyableText(text: "brew install tailcat", font: .callout.monospaced())
+                CopyableText(text: "brew install tailcat", font: .callout.monospaced(), copyLabel: "复制安装命令")
                 Spacer()
                 Button("重新检测") { Task { await manager.refreshTailcatInfo() } }
             }
@@ -191,6 +222,7 @@ struct PingLabel: View {
     var font: Font = .caption2
     var body: some View {
         Text(ping.shortLabel).font(font).foregroundStyle(ping.isDirect ? .green : .orange)
+            .help("最近一次连接探测结果；中继连接也可使用。探测成功不代表远端的具体服务可用。")
     }
 }
 

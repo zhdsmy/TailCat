@@ -27,28 +27,35 @@ struct MenuContent: View {
                 }
             }
             Divider().padding(.vertical, 4)
-            HStack {
-                Button("管理…") { show(nil) }
-                Button("接收…") { startReceiving() }.help("选择一个目录，开始接收别人发来的文件")
-                if !manager.remotes.isEmpty {
-                    Menu("发送…") {
-                        ForEach(manager.remotes) { remote in
-                            Button(remote.name) {
-                                NSApp.activate(ignoringOtherApps: true)
-                                FileSender.send(Panels.chooseFiles(message: "选择要发送到 \(remote.name) 的文件"),
-                                                to: remote, using: manager.cli)
+            VStack(spacing: 8) {
+                HStack {
+                    Button("管理…") { show(nil) }
+                    Button("接收…") { startReceiving() }.help("选择一个目录，开始接收别人发来的文件")
+                    if !manager.remotes.isEmpty {
+                        Menu("发送…") {
+                            ForEach(manager.remotes) { remote in
+                                Button(remote.name) {
+                                    NSApp.activate(ignoringOtherApps: true)
+                                    FileSender.send(Panels.chooseFiles(message: "选择要发送到 \(remote.name) 的文件"),
+                                                    to: remote, using: manager.cli)
+                                }
                             }
                         }
+                        .menuStyle(.button).fixedSize()
                     }
-                    .menuStyle(.button).fixedSize()
+                    Spacer()
                 }
-                Spacer()
-                Button {
-                    NSApp.activate(ignoringOtherApps: true)
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                } label: { Image(systemName: "gearshape") }
-                    .help("设置")
-                Button("退出") { NSApp.terminate(nil) }
+                HStack {
+                    Button { show(.help) } label: { Label("使用说明", systemImage: "questionmark.circle") }
+                        .buttonStyle(.link)
+                    Spacer()
+                    Button {
+                        NSApp.activate(ignoringOtherApps: true)
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    } label: { Image(systemName: "gearshape") }
+                        .help("设置").accessibilityLabel("设置")
+                    Button("退出") { NSApp.terminate(nil) }.help("退出 TailCat 并停止所有由它启动的规则")
+                }
             }
             .padding(.horizontal, 12).padding(.bottom, 8)
         }
@@ -113,15 +120,16 @@ private struct MenuRow: View {
         switch runner.rule.kind {
         case .forward where !runner.listeners.isEmpty:
             ForEach(runner.listeners, id: \.self) { l in
-                Button(l.hostPort) { Clipboard.copy(l.hostPort) }
+                CopyButton(text: l.hostPort, label: l.hostPort, iconOnly: false)
                     .buttonStyle(.link).font(.caption.monospaced()).help("点击复制")
             }
         case .socks where runner.socksAddress != nil:
-            Button(runner.socksAddress!) { Clipboard.copy(runner.socksAddress!) }
+            CopyButton(text: runner.socksAddress!, label: runner.socksAddress!, iconOnly: false)
                 .buttonStyle(.link).font(.caption.monospaced()).help("点击复制")
         case .serve where runner.serverAddress != nil, .recv where runner.serverAddress != nil:
             HStack(spacing: 8) {
-                Button("复制地址") { Clipboard.copy(runner.serverAddress!) }.buttonStyle(.link).font(.caption)
+                CopyButton(text: runner.serverAddress!, label: "复制完整地址", iconOnly: false)
+                    .buttonStyle(.link).font(.caption)
                 if runner.rule.kind == .recv {
                     Button("打开目录") { NSWorkspace.shared.open(URL(fileURLWithPath: runner.rule.recvDir)) }
                         .buttonStyle(.link).font(.caption)

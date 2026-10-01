@@ -36,14 +36,17 @@ struct RuleEditor: View {
     @ViewState private var shareFiles: Bool
     @ViewState private var issues: [RuleIssue] = []
     @ViewState private var confirmRisk = false
+    @ViewState var mappingExamplesExpanded = false
     @ViewState private var importError: String?
     @ViewState private var saveError: String?
 
     init(rule: TunnelRule, isNew: Bool, contacts: [Contact], saveError: String? = nil,
-         importError: String? = nil, onSave: @escaping (TunnelRule) -> Bool) {
+         importError: String? = nil, mappingExamplesExpanded: Bool = false,
+         onSave: @escaping (TunnelRule) -> Bool) {
         _rule = State(initialValue: rule)
         _saveError = State(initialValue: saveError)
         _importError = State(initialValue: importError)
+        _mappingExamplesExpanded = State(initialValue: mappingExamplesExpanded)
         self.isNew = isNew
         self.onSave = onSave
         let dest: Destination
@@ -125,7 +128,9 @@ struct RuleEditor: View {
         }
         if destination == .inline {
             AddressField(address: $rule.address)
-            TextField("客户端 Key", text: $rule.key, prompt: Text("可选，留空用 client-default"))
+            TextField("客户端密钥", text: $rule.key, prompt: Text("可选，留空用 client-default"))
+            Text("对方在 --allow 中需要这把客户端密钥的 nodekey: 公钥（可在“密钥”页复制）；SSH 公钥用于 SSH 登录，需另行配置。")
+                .font(.caption).foregroundStyle(.secondary)
             Text("保存时会自动存为一个远端，之后可在“远端”里统一修改。")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -136,9 +141,22 @@ struct RuleEditor: View {
         Section("端口映射（每行一条）") {
             TextEditor(text: $listText)
                 .font(.body.monospaced()).frame(height: 70)
-            Text("如 8080、18080:8080、0:8080（本地端口由系统分配）、3306:192.168.1.10:3306（经出口节点）")
+            Text("18080:8080 表示本机 18080 转发到远端 8080。")
                 .font(.caption).foregroundStyle(.secondary)
+            DisclosureGroup("更多示例", isExpanded: $mappingExamplesExpanded) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("8080：本机和远端都使用 8080")
+                    Text("0:8080：本地端口由系统分配，远端使用 8080")
+                    Text("3306:192.168.1.10:3306：经出口节点连接指定 IP 和端口")
+                }
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+            }
             TextField("监听地址", text: $rule.bind, prompt: Text("127.0.0.1"))
+            Text("127.0.0.1 仅允许本机访问；0.0.0.0 允许其他设备通过本机网络地址访问。")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("启动后在浏览器打开（--open-browser）", isOn: $rule.openBrowser)
         }
     }
@@ -148,6 +166,8 @@ struct RuleEditor: View {
             destinationPicker
             TextField(text: $rule.socksListen, prompt: Text("127.0.0.1:1080")) { Text("监听地址").font(.body) }
                 .font(.body.monospaced())
+            Text("127.0.0.1 仅允许本机访问；0.0.0.0 允许其他设备通过本机网络地址访问。")
+                .font(.caption).foregroundStyle(.secondary)
             Text("浏览器会把主机名转成小写，而 tc 地址区分大小写：浏览器里只能用出口远端或 server.tailcat；命令行工具可用 <地址>.tailcat。")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -165,20 +185,18 @@ struct RuleEditor: View {
 
     @ViewBuilder private var keyPicker: some View {
         Picker("服务端身份", selection: $rule.key) {
-            Text(manager.savedKeys.contains("default") ? "默认 key（固定地址）" : "默认（未保存 default key，地址每次启动都变）").tag("")
-            Text("临时（每次启动都换新地址）").tag("new")
+            Text(manager.savedKeys.contains("default") ? "默认身份（default）" : "默认（未保存 default，使用临时身份）").tag("")
+            Text("临时身份（每次启动更换地址）").tag("new")
             ForEach(serverKeyChoices, id: \.self) { name in
-                if let addr = manager.keyMeta(name: name)?.address {
-                    Text("\(name)（\(addr.prefix(12))…）").tag(name)
-                } else {
-                    Text(name).tag(name)
-                }
+                Text(name).tag(name)
             }
         }
         if (rule.key == "new" || (rule.key.isEmpty && !manager.savedKeys.contains("default"))) && rule.autoRestart {
-            Text("使用临时 key 时，进程每次重启（含自动重启）地址都会变化，需要重新发给对方。可在“密钥”里创建固定 key。")
+            Text("使用临时身份时，进程每次重启（含自动重启）地址都会变化，需要重新发给对方。")
                 .font(.caption).foregroundStyle(.orange)
         }
+        Text("服务端密钥用于复用身份；长期分享或发布 DNS 时，建议创建密钥时固定 DERP 区域（--fixed-region）。已有密钥的区域不能在此修改。")
+            .font(.caption).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var serveSection: some View {
@@ -229,6 +247,10 @@ struct RuleEditor: View {
                 Picker("权限", selection: $rule.filesMode) {
                     ForEach(FilesMode.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
+                if rule.filesMode == .wo || rule.filesMode == .woPlus {
+                    Text("收件箱权限不能浏览或下载目录内容；请为收件箱选择专用目录。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
         Section("执行命令（可选，每行一个参数）") {
@@ -252,9 +274,10 @@ struct RuleEditor: View {
                     }
                 }
             }
-            TextField(text: $allowExtra, prompt: Text("nodekey:…, nodekey:…")) { Text("其他公钥（可选）").font(.body) }
+            TextField(text: $allowExtra, prompt: Text("nodekey:…, nodekey:…")) { Text("其他客户端公钥（可选）").font(.body) }
                 .font(.body.monospaced())
-            Text("多个公钥用逗号分隔。都留空表示任何拿到地址的人都能连接。").font(.caption).foregroundStyle(.secondary)
+            Text("填写 nodekey: 公钥，多个用逗号分隔；都留空表示任何拿到地址的人都能连接。SSH 公钥不能用于此列表。")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -364,11 +387,16 @@ struct AddressField: View {
                 TextField(text: $address, prompt: Text("tc… / home.example.com")) { Text("地址").font(.body) }
                     .font(.body.monospaced())
                     .onSubmit { Task { await refresh() } }
-                Button("解析") { Task { await refresh() } }
-                Button("展开") { Task { await expand() } }.disabled(busy)
+                Button("查看地址信息") { Task { await refresh() } }
+                Button("转换为 tc 地址") { Task { await expand() } }.disabled(busy)
+            }
+            if !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !address.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("tc") {
+                Text("转换会用当前 DNS 结果替换域名，之后不会随 DNS 更新；需要动态更新时请保留域名。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             if let summary { Text(summary).font(.caption.monospaced()).foregroundStyle(.secondary) }
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            if let error { Text(Diagnostics.mask(error)).font(.caption).foregroundStyle(.red) }
         }
         .task { await refresh() }
     }
@@ -383,7 +411,7 @@ struct AddressField: View {
             summary = parsed.summary
         } else {
             summary = nil
-            error = "无法解析该地址（可能无效）"
+            error = "查看地址信息失败。请检查 tc 地址后重试。"
         }
     }
 
@@ -391,7 +419,8 @@ struct AddressField: View {
         busy = true
         defer { busy = false }
         guard let resolved = await manager.cli.resolve(address: address.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            error = "展开失败"
+            summary = nil
+            error = "转换失败。请检查输入地址后重试。"
             return
         }
         address = resolved

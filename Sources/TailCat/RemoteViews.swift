@@ -72,13 +72,17 @@ struct RemoteDetail: View {
                 Text(remote.name).font(.title2)
                 Spacer()
                 Button("打开网页", action: onBrowse)
+                    .help("打开远端 80 端口；其他端口请新建转发。本地端口会自动选择空闲端口。")
                 Button("编辑", action: onEdit)
                 let inUse = !manager.rules(usingRemote: remote.id).isEmpty
                 Button("删除", role: .destructive) { confirmDelete = true }
                     .disabled(inUse)
                     .help(inUse ? "还有规则在使用这个远端" : "")
             }
-            CopyableText(text: remote.address, font: .callout.monospaced(), secret: true)
+            CopyableText(text: remote.address, font: .callout.monospaced(), secret: true,
+                         copyLabel: "复制完整地址")
+            Text("“打开网页”访问远端 80 端口；其他端口请新建转发。")
+                .font(.caption).foregroundStyle(.secondary)
             HStack(spacing: 16) {
                 clientKeyLabel
                 if !remote.sshUser.isEmpty { Text("SSH 用户：\(remote.sshUser)") }
@@ -91,12 +95,12 @@ struct RemoteDetail: View {
     /// when `client-default` does not exist, which breaks servers that use --allow.
     @ViewBuilder private var clientKeyLabel: some View {
         if !remote.key.isEmpty {
-            Text("客户端 key：\(remote.key)")
+            Text("客户端密钥：\(remote.key)")
         } else if manager.savedKeys.contains("client-default") {
-            Text("客户端 key：client-default")
+            Text("客户端密钥：client-default")
         } else {
             HStack(spacing: 4) {
-                Text("客户端 key：临时（每次连接换公钥，对方无法用 --allow 放行）")
+                Text("客户端密钥：临时（每次连接换公钥，对方无法用 --allow 放行）")
                 Button("去创建 client-default") { navigation.selection = .keys }
                     .buttonStyle(.link).font(.caption).foregroundStyle(.tint)
             }
@@ -105,24 +109,33 @@ struct RemoteDetail: View {
 
     private var connectivity: some View {
         let pinging = manager.pingingRemotes.contains(remote.id)
-        return GroupBox("连接") {
-            HStack(spacing: 8) {
-                RemoteStatusDot(status: manager.remotePings[remote.id])
-                if let status = manager.remotePings[remote.id] {
-                    if let result = status.result {
-                        PingLabel(ping: result, font: .callout.monospaced())
-                    } else {
-                        Text("无响应").foregroundStyle(.red)
+        return GroupBox("连接探测") {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    RemoteStatusDot(status: manager.remotePings[remote.id])
+                    if let status = manager.remotePings[remote.id] {
+                        if let result = status.result {
+                            PingLabel(ping: result, font: .callout.monospaced())
+                        } else {
+                            Text("无响应").foregroundStyle(.red)
+                        }
+                        Ago(date: status.at)
+                    } else if !pinging {
+                        Text("尚未检测").foregroundStyle(.secondary)
                     }
-                    Ago(date: status.at)
-                } else if !pinging {
-                    Text("尚未检测").foregroundStyle(.secondary)
+                    if pinging { ProgressView().controlSize(.small) }
+                    Spacer()
+                    Button("测试连接") { Task { await ping(untilDirect: false) } }.disabled(pinging)
+                    Button("等待直连") { Task { await ping(untilDirect: true) } }
+                        .disabled(pinging)
+                        .help("等待直连探测结果；超时不代表远端离线，中继仍可使用。")
                 }
-                if pinging { ProgressView().controlSize(.small) }
-                if directTimedOut { Text("超时内未获得直连").font(.caption).foregroundStyle(.secondary) }
-                Spacer()
-                Button("测试连接") { Task { await ping(untilDirect: false) } }.disabled(pinging)
-                Button("等待直连") { Task { await ping(untilDirect: true) } }.disabled(pinging)
+                if directTimedOut {
+                    Text("等待结束，未测得直连；超时不代表远端离线，中继仍可使用。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text("最近一次探测成功不代表远端的具体服务可用。直连与中继都可使用。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -148,11 +161,11 @@ struct RemoteDetail: View {
                 HStack {
                     TextField("端口（默认 22，经出口节点可填 ip:port）", text: $sshPort)
                         .frame(maxWidth: 260)
-                    Button("在终端中打开") { openSSH() }
-                    Button("复制命令") { Clipboard.copy(sshCommand()) }
+                    Button("打开 SSH…") { openSSH() }.help("在终端中连接这个远端的 SSH 服务")
+                    CopyButton(text: sshCommand(), label: "复制命令", iconOnly: false)
                 }
                 if let sshError { Text(sshError).font(.caption).foregroundStyle(.red) }
-                Text("需要对方 serve 开启 ssh / no-auth-ssh，或在 22 端口运行 sshd。")
+                Text("需要对方开放 tailcat 的 SSH 服务，或开放运行系统 sshd 的端口；登录仍需相应的 SSH 授权。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -214,6 +227,7 @@ struct FileBrowser: View {
     @ViewState private var transferTask: Task<Void, Never>?
     @ViewState private var dropTargeted = false
     @ViewState private var preserveFileMetadata = false
+    @ViewState var guidanceExpanded = false
 
     var body: some View {
         GroupBox("文件") {
@@ -258,8 +272,14 @@ struct FileBrowser: View {
                         }
                     }
                 } else {
-                    Text("列出文件需要对方 serve 开启 files 或 no-auth-ssh（ls 不带 SSH 公钥，列不出需公钥认证的 ssh）。可把文件拖到这里发送（投递箱只写不可列出）。")
-                        .font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("拖入文件即可发送；浏览和下载需要对方提供可读取的文件服务。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        DisclosureGroup("无法列出文件？", isExpanded: $guidanceExpanded) {
+                            Text("请对方确认已开放可读取的文件服务，并允许当前客户端访问。仅接收模式不提供浏览或下载；列出文件使用的 ls 不携带 SSH 公钥，也无法列出需要 SSH 公钥认证的服务。")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -370,12 +390,15 @@ struct PerfPanel: View {
     }
 
     private var unsupported: some View {
-        HStack {
-            Text("当前 tailcat \(manager.tailcatVersion?.description ?? "") 不支持测速，升级后可用：")
+        VStack(alignment: .leading, spacing: 6) {
+            Text("当前版本不支持测速。安装支持 perf 的 tailcat 版本后，点击“重新检测”。")
                 .foregroundStyle(.secondary)
-            CopyableText(text: "brew upgrade tailcat", font: .callout.monospaced())
-            Spacer()
-            Button("重新检测") { Task { await manager.refreshTailcatInfo() } }
+            HStack {
+                Text("Homebrew 用户可尝试更新：").foregroundStyle(.secondary)
+                CopyableText(text: "brew upgrade tailcat", font: .callout.monospaced(), copyLabel: "复制更新命令")
+                Spacer()
+                Button("重新检测") { Task { await manager.refreshTailcatInfo() } }
+            }
         }
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -497,11 +520,11 @@ struct RemoteEditor: View {
             Form {
                 TextField("名称", text: $remote.name, prompt: Text("如 Mac mini、公司 NAS"))
                 AddressField(address: $remote.address)
-                Picker("客户端 key", selection: $remote.key) {
+                Picker("客户端密钥", selection: $remote.key) {
                     Text("默认（client-default，未保存则每次临时）").tag("")
                     ForEach(clientKeys, id: \.self) { Text($0).tag($0) }
                 }
-                Text("对方用 --allow 限制客户端时，需要固定的客户端 key，并把它的公钥发给对方（在“密钥”里复制）。")
+                Text("对方限制客户端时，请选择已保存的客户端密钥，把它的 nodekey: 公钥交给对方加入允许列表（在“密钥”里复制）。SSH 登录使用单独的 SSH 公钥。")
                     .font(.caption).foregroundStyle(.secondary)
                 TextField("SSH 用户名", text: $remote.sshUser, prompt: Text("可选"))
             }

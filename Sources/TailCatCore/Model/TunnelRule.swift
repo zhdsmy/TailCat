@@ -39,10 +39,10 @@ public enum FilesMode: String, Codable, Sendable, CaseIterable {
 
     public var label: String {
         switch self {
-        case .ro: return "只读"
-        case .rw: return "读写"
-        case .wo: return "只写投递箱（扁平）"
-        case .woPlus: return "只写投递箱（递归）"
+        case .ro: return "只读（浏览和下载）"
+        case .rw: return "读写（浏览、下载和上传）"
+        case .wo: return "仅接收文件（不可浏览或下载）"
+        case .woPlus: return "接收文件和目录（不可浏览或下载）"
         }
     }
 }
