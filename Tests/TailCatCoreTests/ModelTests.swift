@@ -213,6 +213,19 @@ let sampleKey = "nodekey:" + String(repeating: "ab", count: 32)
         #expect(ssh.validate() == [.sshConflict])
     }
 
+    @Test func mappingsNeedATailcatThatServesThem() {
+        // tailcat v0.7.0 rejects `8080:80` at startup; plain ports and ranges still work.
+        let r = serve(["22", "8000-8999", "8080:80, 5555:192.168.1.10:5555"])
+        #expect(r.validate().isEmpty)
+        #expect(r.validate(capabilities: TailcatCapabilities(perf: true)).isEmpty)
+        #expect(r.validate(capabilities: TailcatCapabilities()) == [
+            .serveMappingUnsupported("8080:80"), .serveMappingUnsupported("5555:192.168.1.10:5555"),
+        ])
+        // Forward mappings are a different feature that every tailcat supports.
+        let forward = TunnelRule(name: "fwd", address: "tcABC", mappings: ["8080:80"])
+        #expect(forward.validate(capabilities: TailcatCapabilities()).isEmpty)
+    }
+
     @Test func publicAddressNeedsAllowOrKeyAuthenticatedSSHOnly() {
         var ssh = serve(["ssh"])
         ssh.sshAuthorizedKeys = "me@github"

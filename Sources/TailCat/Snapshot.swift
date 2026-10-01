@@ -113,6 +113,10 @@ enum Snapshot {
         var receiver = manager.runner(id: sample.recvID)!.rule
         receiver.recvDir = shared.filesDir
         try await renderer.page("audit-long-recv-directory", RuleEditor(rule: receiver, isNew: false, contacts: manager.contacts) { _ in true }, in: sample)
+        var mapped = manager.runner(id: sample.serveID)!.rule
+        mapped.services += ["8080:80"]
+        try await renderer.page("audit-serve-mapping-unsupported", RuleEditor(rule: mapped, isNew: false, contacts: manager.contacts,
+            issues: [.serveMappingUnsupported("8080:80")]) { _ in false }, in: sample)
         try await renderer.page("audit-contact-error", ContactEditor(contact: Contact(name: longName), isNew: true, error: error) { _ in false }, in: sample)
         try await renderer.page("audit-key-created", KeyCreateSheet(role: .server, result: SampleWorld.serveAddress), in: sample)
         try await renderer.page("audit-key-error", KeyCreateSheet(role: .client, error: error), in: sample)

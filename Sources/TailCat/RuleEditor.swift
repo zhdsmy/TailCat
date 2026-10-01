@@ -220,8 +220,14 @@ struct RuleEditor: View {
         }
         Section("端口与映射（每行一条，可选）") {
             TextEditor(text: $listText).font(.body.monospaced()).frame(height: 60)
-            Text("如 22、8000-8999、8080:80（隧道 8080 → 本机 80）、5555:192.168.1.10:5555")
-                .font(.caption).foregroundStyle(.secondary)
+            if manager.capabilities.serveMappings {
+                Text("如 22、8000-8999、8080:80（隧道 8080 → 本机 80）、5555:192.168.1.10:5555")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("如 22、8000-8999。当前命令行版本不支持 8080:80 这类端口映射，安装支持此功能的版本后重新检测。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         Section("服务") {
             ForEach(serviceToggles, id: \.name) { item in
@@ -376,7 +382,7 @@ struct RuleEditor: View {
     private func save(confirmed: Bool) {
         saveError = nil
         let c = candidate()
-        issues = c.validate()
+        issues = c.validate(capabilities: manager.capabilities)
         guard issues.isEmpty else { return }
         if c.needsAllowWarning && !confirmed {
             confirmRisk = true
