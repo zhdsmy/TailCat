@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import TailCatCore
 import UniformTypeIdentifiers
@@ -63,6 +64,7 @@ struct ManageView: View {
             }
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+            .background(SplitSeamAlign())
             .toolbar {
                 ToolbarItem {
                     Menu {
@@ -213,5 +215,114 @@ private struct SidebarRow: View {
                     .foregroundStyle(ping.isDirect ? .green : .orange)
             }
         }
+    }
+}
+
+/// Hides the 1pt split divider line and lines the detail title-bar background up with it.
+///
+/// AppKit starts the detail column's title-bar background (`NSTitlebarBackgroundView`) at the
+/// divider's 4pt hit area, left of where the detail column starts, so the sidebar edge jogs at the title bar.
+/// Both views are private and AppKit re-lays them out on every resize, so we correct the background
+/// whenever its frame changes and keep its right edge on the title bar's right edge.
+private struct SplitSeamAlign: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = SeamAlignView(frame: .zero)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class SeamAlignView: NSView {
+    private var observers: [NSObjectProtocol] = []
+    private weak var line: NSView?
+    private weak var background: NSView?
+    private var backgroundObserver: NSObjectProtocol?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        guard let window else { return }
+        let realign: (Notification) -> Void = { [weak self] _ in self?.align() }
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification, object: window, queue: .main, using: realign))
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSSplitView.didResizeSubviewsNotification, object: nil, queue: .main, using: realign))
+        scheduleAlign()
+    }
+
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
+    }
+
+    override func layout() {
+        super.layout()
+        scheduleAlign()
+    }
+
+    /// The title bar is laid out after the split view on first show, so also try on the next turn.
+    private func scheduleAlign() {
+        align()
+        DispatchQueue.main.async { [weak self] in self?.align() }
+    }
+
+    private func align() {
+        guard let window else { return }
+        var root: NSView? = window.contentView
+        while let parent = root?.superview { root = parent }
+        guard let root,
+              let divider = find(in: root, where: { $0.className == "NSVibrantSplitDividerView" }),
+              let line = divider.subviews.first(where: { $0 is NSVisualEffectView }) else { return }
+        self.line = line
+        if line.alphaValue != 0 { line.alphaValue = 0 }
+
+        if background?.window !== window {
+            let lineX = line.convert(line.bounds, to: nil).minX
+            let backgrounds = findAll(in: root) { $0.className == "NSTitlebarBackgroundView" && !$0.isHidden }
+            // The detail column's background is the visible one that starts near the divider.
+            guard let found = backgrounds.first(where: {
+                abs($0.convert($0.bounds, to: nil).minX - lineX) < 8
+            }) else { return }
+            watch(found)
+        }
+        fitBackground()
+    }
+
+    private func watch(_ view: NSView) {
+        if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
+        background = view
+        view.postsFrameChangedNotifications = true
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: view, queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.fitBackground() }
+        }
+    }
+
+    /// Runs synchronously from the frame-change notification so live resize never shows AppKit's frame.
+    private func fitBackground() {
+        guard let line, let background, let superview = background.superview else { return }
+        // With the line hidden, its column shows the sidebar-coloured window background, so the
+        // detail column visibly starts at the line's right edge.
+        let edge = line.convert(line.bounds, to: superview).maxX
+        let current = background.frame
+        let target = NSRect(x: edge, y: current.minY,
+                            width: superview.bounds.maxX - edge, height: current.height)
+        guard abs(current.minX - target.minX) > 0.25 || abs(current.width - target.width) > 0.25 else { return }
+        background.frame = target
+    }
+
+    private func find(in view: NSView, where match: (NSView) -> Bool) -> NSView? {
+        if match(view) { return view }
+        for subview in view.subviews {
+            if let found = find(in: subview, where: match) { return found }
+        }
+        return nil
+    }
+
+    private func findAll(in view: NSView, where match: (NSView) -> Bool) -> [NSView] {
+        (match(view) ? [view] : []) + view.subviews.flatMap { findAll(in: $0, where: match) }
     }
 }
