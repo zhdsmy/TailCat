@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-02
+
 ### 修复
 
 - 接收文件按各自最后观测到变化的时间等待完整静默期，避免稍后到达的文件借用前一个文件的定时器而提前通知。
@@ -104,7 +106,8 @@
 
 - Bundle ID 由 `app.tailcat.menubar` 改为 `io.github.zhdsmy.TailCat`。自己构建过旧版本的用户：规则、远端等数据（`~/Library/Application Support/TailCat/`）不受影响，偏好设置会在首次启动时自动迁移；“登录时启动”需要重新打开，并在“系统设置 › 通用 › 登录项”里删掉旧条目；系统会重新询问通知权限。
 
-[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/zhdsmy/TailCat/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/zhdsmy/TailCat/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/zhdsmy/TailCat/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/zhdsmy/TailCat/compare/v0.1.0...v0.1.1
