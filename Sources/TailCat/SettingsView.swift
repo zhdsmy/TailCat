@@ -2,6 +2,11 @@ import ServiceManagement
 import SwiftUI
 import TailCatCore
 
+/// Result of the last manual update check.
+enum UpdateStatus: Equatable {
+    case checking, upToDate, available(String), failed(String)
+}
+
 struct SettingsView: View {
     @EnvironmentObject var manager: RuleManager
     @ViewState private var settings: AppSettings
@@ -13,9 +18,11 @@ struct SettingsView: View {
     @ViewState private var statusLoop = false
     @ViewState private var launchAtLogin = false
     @ViewState private var pathError: String?
+    @ViewState private var update: UpdateStatus?
 
-    init(settings: AppSettings = AppSettings(), snapshotMode: Bool = false) {
+    init(settings: AppSettings = AppSettings(), snapshotMode: Bool = false, update: UpdateStatus? = nil) {
         _settings = State(initialValue: settings)
+        _update = State(initialValue: update)
         self.snapshotMode = snapshotMode
     }
 
@@ -58,6 +65,25 @@ struct SettingsView: View {
                 Text("依赖 tailcat 未文档化的状态输出（TAILCAT_STATUS_LOOP），重启服务后生效；格式变化时自动不显示。")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("TailCat 更新") {
+                LabeledContent("当前版本") { Text(appVersion).font(.body.monospaced()) }
+                HStack {
+                    Button("检查更新") { Task { await checkForUpdate() } }
+                        .disabled(update == .checking)
+                    switch update {
+                    case .checking?: ProgressView().controlSize(.small)
+                    case .upToDate?: Text("已是最新版本").foregroundStyle(.secondary)
+                    case .available(let version)?:
+                        Text("有新版本 \(version)")
+                        Link("打开下载页", destination: UpdateCheck.releasesPage)
+                    case .failed(let message)?:
+                        Text("检查失败：\(message)").foregroundStyle(.red).lineLimit(2).help(message)
+                    case nil: EmptyView()
+                    }
+                }
+                Text("只在点击时访问 GitHub 查询最新版本，不会自动联网；新版本需下载 DMG 替换。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .padding()
@@ -81,6 +107,16 @@ struct SettingsView: View {
         notifications = settings.notificationsEnabled
         statusLoop = settings.statusLoopEnabled
         if !snapshotMode { launchAtLogin = SMAppService.mainApp.status == .enabled }
+    }
+
+    private func checkForUpdate() async {
+        update = .checking
+        do {
+            let newer = try await UpdateCheck.newerRelease(than: appVersion)
+            update = newer.map { .available($0.raw) } ?? .upToDate
+        } catch {
+            update = .failed(error.localizedDescription)
+        }
     }
 
     private func applyBinaryPath() {

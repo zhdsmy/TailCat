@@ -284,3 +284,14 @@ import Testing
         #expect(report.contains("v0.7.0"))
     }
 }
+
+@Suite struct UpdateCheckTests {
+    @Test func comparesLatestReleaseTagWithRunningVersion() throws {
+        let json = Data(#"{"tag_name":"v0.2.0","name":"TailCat 0.2.0"}"#.utf8)
+        #expect(try UpdateCheck.newer(than: "0.1.2", releaseJSON: json) == TailcatVersion(0, 2, 0))
+        #expect(try UpdateCheck.newer(than: "0.2.0", releaseJSON: json) == nil)
+        #expect(try UpdateCheck.newer(than: "0.10.0", releaseJSON: json) == nil)
+        // A build without Info.plist reports "dev" and cannot be compared.
+        #expect(throws: (any Error).self) { try UpdateCheck.newer(than: "dev", releaseJSON: json) }
+    }
+}

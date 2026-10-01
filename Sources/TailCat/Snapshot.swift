@@ -210,6 +210,8 @@ enum Snapshot {
                                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading),
                                 in: sample, size: CGSize(width: 650, height: 260))
         try await page("settings", SettingsView(settings: sample.settings, snapshotMode: true))
+        try await page("settings-update-available", SettingsView(settings: sample.settings, snapshotMode: true,
+                                                                 update: .available("v9.9.9")))
         if let rule = manager.runner(id: sample.forwardID)?.rule {
             try await page("editor-forward", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts) { _ in true })
             try await page("editor-forward-examples", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts,
