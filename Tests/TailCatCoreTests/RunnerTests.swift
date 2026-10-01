@@ -313,11 +313,12 @@ private func fakeTailcat() throws -> (URL, TailcatCLI) {
 
 @MainActor
 @Suite struct RuleManagerTests {
-    private func manager(dir: URL, script: @escaping @Sendable (TunnelRule) -> String) -> RuleManager {
+    private func manager(dir: URL, probe: @escaping @Sendable () -> PingResult? = { healthyPing },
+                         script: @escaping @Sendable (TunnelRule) -> String) -> RuleManager {
         let locator = BinaryLocator(customPath: { nil }, searchDirectories: [], environmentPATH: nil,
                                     isExecutable: { _ in false })
         return RuleManager(store: RuleStore(directory: dir), locator: locator, settings: testSettings(),
-                           makeConfig: { _ in shConfig(script: script) })
+                           makeConfig: { _ in shConfig(script: script, probe: probe) })
     }
 
     @Test func failedRemoteSaveKeepsInlineAddresses() throws {
@@ -343,6 +344,46 @@ private func fakeTailcat() throws -> (URL, TailcatCLI) {
         m.add(TunnelRule(name: "db", address: "tcDB", mappings: ["5432"]))
         #expect(m.rules[1].address == "tcDB" && m.rules[1].remoteID == nil)
         #expect(try RuleStore(directory: dir).load().map(\.address) == ["tcWEB", "tcDB"])
+    }
+
+    @Test func failedHealthCheckMarksRemoteDown() async {
+        final class Switch: @unchecked Sendable { var up = true }
+        let remoteUp = Switch()
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let m = manager(dir: dir, probe: { remoteUp.up ? healthyPing : nil }) { _ in "\(listenerLine); exec sleep 30" }
+        m.bootstrap()
+        defer { m.shutdown() }
+        let remote = Remote(name: "box", address: "tcBOX")
+        m.saveRemote(remote)
+        var rule = TunnelRule(name: "fwd", mappings: ["0:80"], healthCheck: true)
+        rule.remoteID = remote.id
+        m.add(rule)
+        m.runners[0].start()
+        #expect(await waitUntil { m.remotePings[remote.id]?.result == healthyPing })
+
+        remoteUp.up = false
+        #expect(await waitUntil { m.remotePings[remote.id].map { $0.result == nil } == true })
+    }
+
+    @Test func bootstrapMigratesInlineAddressesIntoRemotes() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try RuleStore(directory: dir).save([TunnelRule(name: "web", address: "tcWEB", key: "k", mappings: ["80"])])
+
+        let m = manager(dir: dir) { _ in "exit 0" }
+        m.bootstrap()
+        defer { m.shutdown() }
+        #expect(m.remotes.count == 1)
+        #expect(m.remotes[0].address == "tcWEB" && m.remotes[0].key == "k")
+        #expect(m.rules[0].remoteID == m.remotes[0].id && m.rules[0].address.isEmpty)
+        #expect(m.remoteDirectory.remote(id: m.remotes[0].id) == m.remotes[0])
+
+        let saved = try RuleStore(directory: dir).load()
+        #expect(saved[0].address.isEmpty)
+        let remotes = try ListStore<Remote>(fileURL: dir.appendingPathComponent("remotes.json")).load()
+        #expect(remotes == m.remotes)
+        #expect(!m.removeRemote(id: remotes[0].id))
     }
 
     @Test func wakeRestartsOnlyClientRules() async {

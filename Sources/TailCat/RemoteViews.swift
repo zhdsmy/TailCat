@@ -450,7 +450,8 @@ struct RemoteEditor: View {
 
     private var clientKeys: [String] {
         var names = manager.savedKeys.filter {
-            $0 != "client-default" && (manager.keyMeta(name: $0) ?? KeyMeta(name: $0)).effectiveRole == .client
+            // Keys of unknown role (e.g. made with the CLI under any name) stay selectable.
+            $0 != "client-default" && (manager.keyMeta(name: $0) ?? KeyMeta(name: $0)).effectiveRole != .server
         }
         if !remote.key.isEmpty, !names.contains(remote.key) { names.append(remote.key) }
         return names

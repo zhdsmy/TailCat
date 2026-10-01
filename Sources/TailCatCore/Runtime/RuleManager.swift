@@ -288,6 +288,12 @@ public final class RuleManager: ObservableObject {
         let runner = TunnelRunner(rule: rule, config: makeConfig(remoteDirectory))
         runner.onPIDChange = { [weak self] id, pid in self?.trackPID(id: id, pid: pid) }
         runner.onNotify = { [weak self] title, body in self?.onNotify?(title, body) }
+        // A rule's health check doubles as a reachability probe for its remote, failures included,
+        // so a dead remote does not keep showing its last good ping.
+        runner.onProbe = { [weak self, weak runner] result in
+            guard let self, let rid = runner?.rule.remoteID else { return }
+            self.remotePings[rid] = RemotePing(result: result)
+        }
         runner.onServerAddress = { [weak self] _, address, savedKey in
             guard let savedKey else { return }
             self?.recordKey(KeyMeta(name: savedKey, role: .server, address: address))
@@ -299,11 +305,6 @@ public final class RuleManager: ObservableObject {
             runner.$state.sink { [weak self, weak runner] state in
                 guard let self, let runner else { return }
                 self.syncWatcher(for: runner.rule, active: state.isActive)
-            },
-            // A rule's health check doubles as a reachability probe for its remote.
-            runner.$lastPing.sink { [weak self, weak runner] ping in
-                guard let self, let runner, let ping, let rid = runner.rule.remoteID else { return }
-                self.remotePings[rid] = RemotePing(result: ping, at: runner.lastPingAt ?? Date())
             },
         ]
         runners.append(runner)

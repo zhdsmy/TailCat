@@ -150,6 +150,8 @@ public final class TunnelRunner: ObservableObject, Identifiable {
     public var onPIDChange: ((UUID, Int32?) -> Void)?
     /// (title, body) for alerts the user should see even with the window closed.
     public var onNotify: ((String, String) -> Void)?
+    /// Outcome of each health check and plain manual ping; nil when the server did not answer.
+    public var onProbe: ((PingResult?) -> Void)?
     /// A server printed its address; `savedKey` is nil for an ephemeral key.
     public var onServerAddress: ((TunnelRule, String, String?) -> Void)?
 
@@ -227,6 +229,8 @@ public final class TunnelRunner: ObservableObject, Identifiable {
         }
         appendLog(untilDirect ? "# ping --until-direct…" : "# ping…")
         let result = await config.probe(spec, untilDirect, timeoutSeconds)
+        // A failed --until-direct wait says nothing about relayed reachability.
+        if result != nil || !untilDirect { onProbe?(result) }
         if let result {
             recordPing(result)
             appendLog("# \(result.detailLabel)")
@@ -414,6 +418,7 @@ public final class TunnelRunner: ObservableObject, Identifiable {
 
             let result = await config.probe(spec, false, 10)
             if Task.isCancelled || !isCurrent(gen) { return }
+            onProbe?(result)
             if let result {
                 recordPing(result)
                 failures = 0
