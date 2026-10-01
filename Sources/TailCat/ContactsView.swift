@@ -31,7 +31,7 @@ struct ContactsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Image(systemName: "person.crop.circle")
-                                Text(contact.name).font(.headline)
+                                Text(contact.name).font(.headline).lineLimit(1).truncationMode(.middle).help(contact.name)
                                 Spacer()
                                 Button("编辑") { isNew = false; editing = contact }
                                 Button("删除", role: .destructive) { manager.removeContact(id: contact.id) }
@@ -63,8 +63,9 @@ struct ContactEditor: View {
     let onSave: (Contact) -> Bool
     @ViewState private var error: String?
 
-    init(contact: Contact, isNew: Bool, onSave: @escaping (Contact) -> Bool) {
+    init(contact: Contact, isNew: Bool, error: String? = nil, onSave: @escaping (Contact) -> Bool) {
         _contact = State(initialValue: contact)
+        _error = State(initialValue: error)
         self.isNew = isNew
         self.onSave = onSave
     }
@@ -78,7 +79,7 @@ struct ContactEditor: View {
                     .font(.body.monospaced())
             }
             .formStyle(.grouped)
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            if let error { Text(Diagnostics.mask(error)).font(.caption).foregroundStyle(.red) }
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)

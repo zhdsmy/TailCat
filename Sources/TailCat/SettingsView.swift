@@ -4,7 +4,8 @@ import TailCatCore
 
 struct SettingsView: View {
     @EnvironmentObject var manager: RuleManager
-    @ViewState private var settings = AppSettings()
+    @ViewState private var settings: AppSettings
+    private let snapshotMode: Bool
     @ViewState private var customPath = ""
     @ViewState private var derpmapURL = ""
     @ViewState private var verbose = false
@@ -12,6 +13,11 @@ struct SettingsView: View {
     @ViewState private var statusLoop = false
     @ViewState private var launchAtLogin = false
     @ViewState private var pathError: String?
+
+    init(settings: AppSettings = AppSettings(), snapshotMode: Bool = false) {
+        _settings = State(initialValue: settings)
+        self.snapshotMode = snapshotMode
+    }
 
     var body: some View {
         Form {
@@ -74,7 +80,7 @@ struct SettingsView: View {
         verbose = settings.verbose
         notifications = settings.notificationsEnabled
         statusLoop = settings.statusLoopEnabled
-        launchAtLogin = SMAppService.mainApp.status == .enabled
+        if !snapshotMode { launchAtLogin = SMAppService.mainApp.status == .enabled }
     }
 
     private func applyBinaryPath() {
@@ -93,6 +99,7 @@ struct SettingsView: View {
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
+        guard !snapshotMode else { return }
         do {
             if enabled {
                 try SMAppService.mainApp.register()

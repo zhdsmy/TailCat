@@ -102,6 +102,7 @@ struct CopyableText: View {
                 .lineLimit(lineLimit)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
+                .help(secret && !revealed ? "地址已隐藏；复制可获得完整内容" : text)
             if secret && sharedReveal == nil {
                 Button { ownReveal.toggle() } label: { Image(systemName: ownReveal ? "eye.slash" : "eye") }
                     .buttonStyle(.borderless)
@@ -132,6 +133,7 @@ struct CopyButton: View {
         }
         .help(label)
         .accessibilityLabel(copied ? "已复制" : label)
+        .fixedSize()
         .task(id: copied) {
             guard copied else { return }
             do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
@@ -209,11 +211,14 @@ struct Badge: View {
     var systemImage: String = "exclamationmark.triangle.fill"
 
     var body: some View {
-        Label(text, systemImage: systemImage)
-            .font(.caption)
-            .padding(.horizontal, 6).padding(.vertical, 3)
-            .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
-            .foregroundStyle(color)
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Image(systemName: systemImage).accessibilityHidden(true)
+            Text(Diagnostics.mask(text)).lineLimit(nil).fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.caption)
+        .padding(.horizontal, 6).padding(.vertical, 3)
+        .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
+        .foregroundStyle(color)
     }
 }
 

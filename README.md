@@ -64,7 +64,9 @@ swift build --product TailCatPackageTests && swift test --skip-build
 swift scripts/capture-windows.swift   # 截取正在运行的 TailCat 可见窗口到 build/captures/
 ```
 
-`snapshot.sh` 只在 debug 构建里可用（`TailCat --snapshot <目录>`），数据全部在临时目录、tailcat 是假脚本，不碰真实规则，也不需要任何权限；不含窗口标题栏/工具栏，未聚焦窗口里的开关显示为灰色。`capture-windows.swift` 截的是真实界面（含标题栏），需要给运行它的 App（终端或 Cursor）开“屏幕录制”权限；菜单栏面板在切换到别的 App 时会自动收起，所以通常只能截到管理窗口和设置窗口。
+`snapshot.sh` 只在 debug 构建里可用（`TailCat --snapshot <目录>`），数据全部在临时目录、tailcat 是假脚本，不碰真实规则或登录项设置，也不需要任何权限。快照覆盖正常、空白、失败状态，以及窄窗口、长名称、文件传输和测速结果；可滚动页面自动追加 `-scroll-N` 截图。使用 `./scripts/snapshot.sh --only=audit-` 可只渲染布局检查场景，深色加 `--dark`（放在第一个参数）。
+
+快照不含窗口标题栏/工具栏、系统弹窗及交互测试；未聚焦窗口里的开关显示为灰色。`capture-windows.swift` 截的是真实界面（含标题栏），需要给运行它的 App（终端或 Cursor）开“屏幕录制”权限；菜单栏面板在切换到别的 App 时会自动收起，所以通常只能截到管理窗口和设置窗口。
 
 App 为 ad-hoc 签名、仅菜单栏（`LSUIElement`），没有 Dock 图标；App 图标（通知、Finder、登录项里可见）由 `swift scripts/make-icon.swift` 用矢量绘制生成 `Resources/AppIcon.icns`，改图后重新运行即可。
 

@@ -63,7 +63,7 @@ struct ManageView: View {
                                 RemoteStatusDot(status: manager.remotePings[remote.id])
                             }
                             .tag(SidebarItem.remote(remote.id))
-                            .help("拖入文件即可发送到该远端")
+                            .help("\(remote.name)\n拖入文件即可发送到该远端")
                             .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                                 loadURLs(providers) { FileSender.send($0, to: remote, using: manager.cli) }
                                 return true
@@ -94,9 +94,10 @@ struct ManageView: View {
                     }
                 }
             } detail: {
-                detail
+                detail.frame(minWidth: 460)
             }
         }
+        .frame(minWidth: 700, minHeight: 480)
         .sheet(item: $ruleDraft) { draft in
             RuleEditor(rule: draft.rule, isNew: draft.isNew, contacts: manager.contacts,
                        importError: draft.importError) { saved in
@@ -240,7 +241,7 @@ private struct SidebarRow: View {
     var body: some View {
         HStack {
             StatusDot(state: runner.state)
-            Text(runner.rule.name)
+            Text(runner.rule.name).lineLimit(1).help(runner.rule.name)
             Spacer()
             if runner.rule.needsAllowWarning {
                 Image(systemName: "exclamationmark.shield").foregroundStyle(.red).help("未设置允许列表")

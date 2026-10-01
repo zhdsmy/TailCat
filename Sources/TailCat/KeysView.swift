@@ -18,14 +18,27 @@ struct KeysView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("密钥").font(.title2)
-                    Spacer()
-                    Button("新建服务端密钥…") { creating = .server }
-                    Button("新建客户端密钥…") { creating = .client }
-                    Button("DNS 发布向导…") { showWizard = true }
-                    Button { Task { await manager.refreshKeys() } } label: { Image(systemName: "arrow.clockwise") }
-                        .help("刷新")
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("密钥").font(.title2)
+                        Spacer()
+                        Button { Task { await manager.refreshKeys() } } label: { Image(systemName: "arrow.clockwise") }
+                            .help("刷新")
+                    }
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            Button("新建服务端密钥…") { creating = .server }
+                            Button("新建客户端密钥…") { creating = .client }
+                            Button("DNS 发布向导…") { showWizard = true }
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Button("新建服务端密钥…") { creating = .server }
+                                Button("新建客户端密钥…") { creating = .client }
+                            }
+                            Button("DNS 发布向导…") { showWizard = true }
+                        }
+                    }
                 }
                 Text("服务端密钥用于共享本机服务；客户端密钥用于连接他人。nodekey: 公钥用于客户端允许列表，SSH 公钥用于 SSH 登录。")
                     .font(.caption).foregroundStyle(.secondary)
@@ -88,7 +101,7 @@ struct KeysView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Image(systemName: meta.effectiveRole == .client ? "person.crop.circle" : "server.rack")
-                    Text(name).font(.headline)
+                    Text(name).font(.headline).lineLimit(1).truncationMode(.middle).help(name)
                     switch name {
                     case "client-default": Badge(text: "本机默认客户端身份", color: .accentColor, systemImage: "checkmark.seal")
                     case "default": Badge(text: "默认服务端身份", color: .accentColor, systemImage: "checkmark.seal")
@@ -156,7 +169,7 @@ extension KeyRole: Identifiable {
     public var id: String { rawValue }
 }
 
-private enum RegionMode: String, CaseIterable, Hashable {
+enum RegionMode: String, CaseIterable, Hashable {
     case auto, nearestNow, named, custom
 
     var label: String {
@@ -188,8 +201,13 @@ private struct RegionFields: View {
             .font(.caption).foregroundStyle(.secondary)
         if mode == .named {
             if regions.isEmpty {
-                HStack {
-                    Text(loadError ?? "正在加载区域列表…").font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    if let loadError {
+                        Text(loadError).font(.caption).foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("正在加载区域列表…").font(.caption).foregroundStyle(.secondary)
+                    }
                     TextField("区域代码", text: $named, prompt: Text("如 sfo"))
                 }
             } else {
@@ -241,6 +259,13 @@ struct KeyCreateSheet: View {
     @ViewState private var busy = false
     @ViewState private var result: String?
     @ViewState private var error: String?
+
+    init(role: KeyRole, regionMode: RegionMode = .auto, result: String? = nil, error: String? = nil) {
+        self.role = role
+        _mode = State(initialValue: regionMode)
+        _result = State(initialValue: result)
+        _error = State(initialValue: error)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -336,8 +361,11 @@ struct DNSWizard: View {
     @ViewState private var error: String?
 
     /// `address` skips step 1 (snapshots).
-    init(address: String? = nil) {
+    init(address: String? = nil, domain: String = "", useSSH: Bool = false, error: String? = nil) {
         _address = State(initialValue: address)
+        _domain = State(initialValue: domain)
+        _useSSH = State(initialValue: useSSH)
+        _error = State(initialValue: error)
     }
 
     var body: some View {
