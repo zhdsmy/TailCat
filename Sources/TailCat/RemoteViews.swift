@@ -17,11 +17,27 @@ struct RemoteDetail: View {
     @ViewState private var sshPort = ""
     @ViewState private var sshError: String?
     @ViewState private var confirmDelete = false
+    @ViewState private var deleteError: String?
+
+    init(remote: Remote, onEdit: @escaping () -> Void, onDeleted: @escaping () -> Void,
+         onNewRule: @escaping (TunnelKind) -> Void, onShowRule: @escaping (UUID) -> Void,
+         deleteError: String? = nil) {
+        self.remote = remote
+        self.onEdit = onEdit
+        self.onDeleted = onDeleted
+        self.onNewRule = onNewRule
+        self.onShowRule = onShowRule
+        _deleteError = State(initialValue: deleteError)
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 header
+                if let deleteError {
+                    Text(Diagnostics.mask(deleteError)).font(.caption).foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
                 connectivity
                 rulesBox
                 sshBox
@@ -36,7 +52,14 @@ struct RemoteDetail: View {
             if stale { await manager.pingRemote(id: remote.id) }
         }
         .confirmationDialog("删除远端 \(remote.name)？", isPresented: $confirmDelete) {
-            Button("删除", role: .destructive) { if manager.removeRemote(id: remote.id) { onDeleted() } }
+            Button("删除", role: .destructive) {
+                deleteError = nil
+                if manager.removeRemote(id: remote.id) {
+                    onDeleted()
+                } else {
+                    deleteError = "无法删除远端：\(manager.loadError ?? "仍有规则在使用此远端")"
+                }
+            }
         }
     }
 
@@ -444,8 +467,9 @@ struct RemoteEditor: View {
     @ViewState private var issues: [RemoteIssue] = []
     @ViewState private var saveError: String?
 
-    init(remote: Remote, isNew: Bool, onSave: @escaping (Remote) -> Bool) {
+    init(remote: Remote, isNew: Bool, saveError: String? = nil, onSave: @escaping (Remote) -> Bool) {
         _remote = State(initialValue: remote)
+        _saveError = State(initialValue: saveError)
         self.isNew = isNew
         self.onSave = onSave
     }
@@ -477,7 +501,7 @@ struct RemoteEditor: View {
             if !issues.isEmpty {
                 ForEach(issues.map(\.description), id: \.self) { Text($0).foregroundStyle(.red).font(.caption) }
             }
-            if let saveError { Text(saveError).foregroundStyle(.red).font(.caption) }
+            if let saveError { Text(Diagnostics.mask(saveError)).foregroundStyle(.red).font(.caption) }
             HStack {
                 if isNew {
                     Button("从剪贴板粘贴地址") {
@@ -497,6 +521,7 @@ struct RemoteEditor: View {
     }
 
     private func save() {
+        saveError = nil
         var c = remote
         c.name = c.name.trimmingCharacters(in: .whitespaces)
         c.address = c.address.trimmingCharacters(in: .whitespacesAndNewlines)

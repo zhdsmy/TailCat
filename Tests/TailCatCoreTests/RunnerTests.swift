@@ -375,6 +375,16 @@ private func fakeTailcat() throws -> (URL, TailcatCLI) {
         #expect(try RuleStore(directory: dir).load()[0].address == "tcNAS")
         #expect(!m.removeRemote(id: box.id))
         #expect(m.remotes == [box])
+        #expect(try ListStore<Remote>(fileURL: remotesFile).load() == [box])
+
+        // Once the file is writable again, retrying the edit and delete updates both copies.
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: remotesFile.path)
+        #expect(m.saveRemote(moved))
+        #expect(m.remoteDirectory.remote(id: box.id) == moved)
+        #expect(try ListStore<Remote>(fileURL: remotesFile).load() == [moved])
+        #expect(m.removeRemote(id: box.id))
+        #expect(m.remotes.isEmpty && m.remoteDirectory.remote(id: box.id) == nil)
+        #expect(try ListStore<Remote>(fileURL: remotesFile).load().isEmpty)
     }
 
     @Test func failedHealthCheckMarksRemoteDown() async {
