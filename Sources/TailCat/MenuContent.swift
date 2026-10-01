@@ -70,7 +70,7 @@ struct MenuContent: View {
             id = existing.id
         } else {
             let rule = TunnelRule(name: "收件箱 · \(url.lastPathComponent)", kind: .recv, recvDir: url.path)
-            manager.add(rule)
+            guard manager.add(rule) else { show(nil); return }
             id = rule.id
         }
         if let runner = manager.runner(id: id), !runner.state.isActive { runner.start() }

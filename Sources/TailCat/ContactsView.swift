@@ -56,13 +56,14 @@ struct ContactsView: View {
 }
 
 struct ContactEditor: View {
+    @EnvironmentObject var manager: RuleManager
     @Environment(\.dismiss) private var dismiss
     @ViewState private var contact: Contact
     let isNew: Bool
-    let onSave: (Contact) -> Void
+    let onSave: (Contact) -> Bool
     @ViewState private var error: String?
 
-    init(contact: Contact, isNew: Bool, onSave: @escaping (Contact) -> Void) {
+    init(contact: Contact, isNew: Bool, onSave: @escaping (Contact) -> Bool) {
         _contact = State(initialValue: contact)
         self.isNew = isNew
         self.onSave = onSave
@@ -82,11 +83,12 @@ struct ContactEditor: View {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") {
+                    error = nil
                     var c = contact
                     c.name = c.name.trimmingCharacters(in: .whitespaces)
                     c.publicKey = c.publicKey.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard c.isValid else { error = "需要名称，公钥应为 nodekey: 加 64 位十六进制"; return }
-                    onSave(c)
+                    guard onSave(c) else { error = manager.loadError ?? "保存失败，请重试。"; return }
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

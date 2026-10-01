@@ -313,6 +313,114 @@ private func fakeTailcat() throws -> (URL, TailcatCLI) {
 
 @MainActor
 @Suite struct RuleManagerTests {
+    @Test func failedRuleWritesKeepSavedAndRunningState() async throws {
+        let dir = tempDir()
+        let store = RuleStore(directory: dir)
+        let fm = FileManager.default
+        defer {
+            try? fm.setAttributes([.immutable: false], ofItemAtPath: store.fileURL.path)
+            try? fm.removeItem(at: dir)
+        }
+        let m = manager(dir: dir) { _ in "\(listenerLine); exec sleep 30" }
+        defer { m.shutdown() }
+        let original = TunnelRule(name: "web", kind: .serve, services: ["80"], healthCheck: false)
+        #expect(m.add(original))
+        let runner = try #require(m.runner(id: original.id))
+        runner.start()
+        #expect(await waitUntil { runner.state == .running })
+        try fm.setAttributes([.immutable: true], ofItemAtPath: store.fileURL.path)
+        var edited = original
+        edited.name = "edited"
+        #expect(!m.update(edited))
+        #expect(!m.add(TunnelRule(name: "other", kind: .serve, services: ["81"])))
+        #expect(!m.remove(id: original.id))
+        #expect(m.rules == [original])
+        #expect(runner.state == .running)
+        #expect(try store.load() == [original])
+        try fm.setAttributes([.immutable: false], ofItemAtPath: store.fileURL.path)
+        #expect(m.update(edited))
+        #expect(m.loadError == nil)
+        #expect(m.rules == [edited])
+        #expect(try store.load() == [edited])
+        #expect(m.remove(id: original.id))
+        #expect(m.rules.isEmpty)
+        #expect(try store.load().isEmpty)
+    }
+
+    @Test func unreadableBootstrapCannotReplaceExistingRules() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = RuleStore(directory: dir)
+        let rules = [TunnelRule(name: "web", kind: .serve, services: ["80"])]
+        try store.save(rules)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: store.fileURL.path)
+        let m = manager(dir: dir) { _ in "exit 0" }
+        m.bootstrap()
+        defer { m.shutdown() }
+        #expect(m.rules.isEmpty && m.loadError != nil)
+        #expect(!m.add(TunnelRule(name: "replacement", kind: .serve, services: ["81"])))
+        #expect(m.saveRemote(Remote(name: "box", address: "tcEXAMPLE")))
+        #expect(m.loadError?.contains("rules.json") == true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: store.fileURL.path)
+        #expect(try store.load() == rules)
+    }
+
+    @Test func websiteShortcutReusesSavedForwardAndRefusesFailedSave() throws {
+        let dir = tempDir()
+        let store = RuleStore(directory: dir)
+        let fm = FileManager.default
+        defer {
+            try? fm.setAttributes([.immutable: false], ofItemAtPath: store.fileURL.path)
+            try? fm.removeItem(at: dir)
+        }
+        let m = manager(dir: dir) { _ in "exit 0" }
+        defer { m.shutdown() }
+        let remote = Remote(name: "box", address: "tcEXAMPLE", key: "work")
+        #expect(m.saveRemote(remote))
+        let runner = try #require(m.websiteRule(for: remote.id))
+        #expect(m.websiteRule(for: remote.id)?.id == runner.id)
+        #expect(m.rules.count == 1 && !runner.state.isActive)
+        #expect(runner.rule.arguments(remote: remote).suffix(4) == ["--bind=127.0.0.1", "--open-browser", "tcEXAMPLE", "0:80"])
+        #expect(!runner.rule.autoStart)
+        try fm.setAttributes([.immutable: true], ofItemAtPath: store.fileURL.path)
+        let other = Remote(name: "other", address: "tcOTHER")
+        #expect(m.saveRemote(other))
+        #expect(m.websiteRule(for: other.id) == nil)
+        #expect(m.rules.count == 1)
+    }
+
+    @Test func failedListWritesDoNotPublishContactsOrKeyMetadata() throws {
+        let dir = tempDir()
+        let fm = FileManager.default
+        let contacts = dir.appendingPathComponent("contacts.json")
+        let metadata = dir.appendingPathComponent("key-meta.json")
+        defer {
+            for url in [contacts, metadata] { try? fm.setAttributes([.immutable: false], ofItemAtPath: url.path) }
+            try? fm.removeItem(at: dir)
+        }
+        let m = manager(dir: dir) { _ in "exit 0" }
+        defer { m.shutdown() }
+        let contact = Contact(name: "Alice", publicKey: "nodekey:" + String(repeating: "a", count: 64))
+        #expect(m.saveContact(contact))
+        m.recordKey(KeyMeta(name: "work", role: .client))
+        let savedMetadata = m.keyMetas
+        for url in [contacts, metadata] { try fm.setAttributes([.immutable: true], ofItemAtPath: url.path) }
+        #expect(!m.removeContact(id: contact.id))
+        var edited = contact
+        edited.name = "renamed"
+        #expect(!m.saveContact(edited))
+        m.recordKey(KeyMeta(name: "work", role: .server))
+        m.forgetKey(name: "work")
+        #expect(m.contacts == [contact] && m.keyMetas == savedMetadata)
+        try fm.setAttributes([.immutable: false], ofItemAtPath: contacts.path)
+        #expect(m.saveContact(edited))
+        #expect(m.loadError?.contains("contacts.json") == false)
+        #expect(m.loadError?.contains("key-meta.json") == true)
+        try fm.setAttributes([.immutable: false], ofItemAtPath: metadata.path)
+        m.forgetKey(name: "work")
+        #expect(m.keyMetas.isEmpty && m.loadError == nil)
+    }
+
     private func manager(dir: URL, probe: @escaping @Sendable () -> PingResult? = { healthyPing },
                          script: @escaping @Sendable (TunnelRule) -> String) -> RuleManager {
         let locator = BinaryLocator(customPath: { nil }, searchDirectories: [], environmentPATH: nil,

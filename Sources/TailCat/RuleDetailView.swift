@@ -8,6 +8,7 @@ struct RuleDetail: View {
     let onEdit: () -> Void
     let onDelete: () -> Void
     let onShowRemote: (UUID) -> Void
+    var onDuplicate: () -> Void = {}
     @ViewState private var confirmDelete = false
     @ViewState private var logExpanded = false
     @ViewState private var revealAddress = false
@@ -48,6 +49,7 @@ struct RuleDetail: View {
                 Button(runner.state.isActive ? "停止" : "启动") { manager.toggle(id: runner.id) }
                 Button("编辑", action: onEdit)
                 Menu {
+                    Button("复制为新规则…", action: onDuplicate)
                     Button("复制等价 CLI 命令") { Clipboard.copy(rule.cliCommand(remote: remote)) }
                     Button("复制诊断信息（地址已打码）") { Clipboard.copy(diagnostics()) }
                     Divider()

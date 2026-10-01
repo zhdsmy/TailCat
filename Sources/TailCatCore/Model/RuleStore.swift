@@ -3,11 +3,17 @@ import Foundation
 public enum RuleStoreError: Error, LocalizedError {
     /// The file could not be decoded; it was moved aside to `backup` so it is not overwritten.
     case corrupt(backup: URL)
+    case unsupportedVersion(Int)
+    case writeBlocked(String)
 
     public var errorDescription: String? {
         switch self {
         case .corrupt(let backup):
             return "数据文件已损坏，已备份到 \(backup.path)，当前从空列表开始。"
+        case .unsupportedVersion(let version):
+            return "数据文件版本 \(version) 不受支持，已保留原文件，请使用兼容的 TailCat 版本。"
+        case .writeBlocked(let reason):
+            return "配置未能载入，已阻止覆盖：\(reason)。请修复文件后重新启动 TailCat。"
         }
     }
 }
@@ -15,8 +21,12 @@ public enum RuleStoreError: Error, LocalizedError {
 /// Reads and writes files that hold credentials (tc addresses): the file is 0600 and the
 /// directory 0700; writes go through a 0600 temp file and an atomic rename.
 public enum SecureFile {
-    public static func read(_ url: URL) -> Data? {
-        try? Data(contentsOf: url)
+    public static func read(_ url: URL) throws -> Data? {
+        do { return try Data(contentsOf: url) } catch {
+            let code = (error as? CocoaError)?.code
+            if code == .fileReadNoSuchFile || code == .fileNoSuchFile { return nil }
+            throw error
+        }
     }
 
     public static func write(_ data: Data, to url: URL) throws {
@@ -39,12 +49,28 @@ public enum SecureFile {
     }
 
     /// Moves an undecodable file aside so the next save does not destroy it.
-    public static func quarantine(_ url: URL) -> URL {
+    public static func quarantine(_ url: URL) throws -> URL {
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let base = url.deletingPathExtension().lastPathComponent
-        let backup = url.deletingLastPathComponent().appendingPathComponent("\(base).corrupt-\(stamp).json")
-        try? FileManager.default.moveItem(at: url, to: backup)
+        let backup = url.deletingLastPathComponent().appendingPathComponent("\(base).corrupt-\(stamp)-\(UUID().uuidString).json")
+        try FileManager.default.moveItem(at: url, to: backup)
         return backup
+    }
+
+    private struct Version: Decodable { var version: Int }
+
+    /// Check the envelope before decoding items: future item schemas must not be quarantined
+    /// as corrupt and replaced by an empty list when an older app opens them.
+    static func decode<T: Decodable>(_ type: T.Type, at url: URL, versions: ClosedRange<Int>,
+                                     decoder: JSONDecoder = JSONDecoder()) throws -> T? {
+        guard let data = try read(url) else { return nil }
+        do {
+            let version = try decoder.decode(Version.self, from: data).version
+            guard versions.contains(version) else { throw RuleStoreError.unsupportedVersion(version) }
+            return try decoder.decode(type, from: data)
+        } catch is DecodingError {
+            throw RuleStoreError.corrupt(backup: try quarantine(url))
+        }
     }
 }
 
@@ -59,6 +85,7 @@ public final class RuleStore: @unchecked Sendable {
     public static let currentVersion = 2
 
     public let directory: URL
+    private var loadFailure: String?
     public var fileURL: URL { directory.appendingPathComponent("rules.json") }
 
     public init(directory: URL) {
@@ -71,15 +98,21 @@ public final class RuleStore: @unchecked Sendable {
     }
 
     public func load() throws -> [TunnelRule] {
-        guard let data = SecureFile.read(fileURL) else { return [] }
         do {
-            return try JSONDecoder().decode(FileFormat.self, from: data).rules
+            let rules = try SecureFile.decode(FileFormat.self, at: fileURL, versions: 1...Self.currentVersion)?.rules ?? []
+            loadFailure = nil
+            return rules
+        } catch RuleStoreError.corrupt(let backup) {
+            loadFailure = nil // A verified backup makes starting over safe.
+            throw RuleStoreError.corrupt(backup: backup)
         } catch {
-            throw RuleStoreError.corrupt(backup: SecureFile.quarantine(fileURL))
+            loadFailure = error.localizedDescription
+            throw error
         }
     }
 
     public func save(_ rules: [TunnelRule]) throws {
+        if let loadFailure { throw RuleStoreError.writeBlocked(loadFailure) }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try SecureFile.write(encoder.encode(FileFormat(version: Self.currentVersion, rules: rules)), to: fileURL)
@@ -94,23 +127,30 @@ public final class ListStore<Item: Codable>: @unchecked Sendable {
     }
 
     public let fileURL: URL
+    private var loadFailure: String?
 
     public init(fileURL: URL) {
         self.fileURL = fileURL
     }
 
     public func load() throws -> [Item] {
-        guard let data = SecureFile.read(fileURL) else { return [] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
-            return try decoder.decode(FileFormat.self, from: data).items
+            let items = try SecureFile.decode(FileFormat.self, at: fileURL, versions: 1...1, decoder: decoder)?.items ?? []
+            loadFailure = nil
+            return items
+        } catch RuleStoreError.corrupt(let backup) {
+            loadFailure = nil
+            throw RuleStoreError.corrupt(backup: backup)
         } catch {
-            throw RuleStoreError.corrupt(backup: SecureFile.quarantine(fileURL))
+            loadFailure = error.localizedDescription
+            throw error
         }
     }
 
     public func save(_ items: [Item]) throws {
+        if let loadFailure { throw RuleStoreError.writeBlocked(loadFailure) }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601

@@ -223,10 +223,10 @@ public struct TailcatCLI: Sendable {
     }
 
     public func download(_ identity: ClientIdentity, remotePath: String, isDirectory: Bool,
-                         to localDirectory: URL) async -> Result<Void, CLIError> {
+                         to localDirectory: URL, preserve: Bool = false) async -> Result<Void, CLIError> {
         let args = Self.copyArguments(identity: identity, sources: ["\(identity.address):\(remotePath)"],
                                       target: localDirectory.path + "/", recursive: isDirectory,
-                                      preserve: false, settings: settings)
+                                      preserve: preserve, settings: settings)
         return await runChecked(args, timeout: 6 * 3600).map { _ in () }
     }
 

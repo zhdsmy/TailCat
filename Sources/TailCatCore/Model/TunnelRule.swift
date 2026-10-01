@@ -51,6 +51,7 @@ public enum RuleIssue: Error, Equatable, Sendable, CustomStringConvertible {
     case emptyName
     case invalidAddress
     case noMappings
+    case openBrowserNeedsOneMapping
     case invalidMapping(String)
     case invalidBind
     case invalidKey
@@ -71,9 +72,10 @@ public enum RuleIssue: Error, Equatable, Sendable, CustomStringConvertible {
         case .emptyName: return "名称不能为空"
         case .invalidAddress: return "地址不能为空，不能含空白字符，也不能以 - 开头"
         case .noMappings: return "至少需要一条端口映射"
+        case .openBrowserNeedsOneMapping: return "--open-browser 必须且只能搭配一条端口映射"
         case .invalidMapping(let m): return "端口映射格式不对：\(m)（应为 8080、18080:8080 或 3306:192.168.1.10:3306）"
         case .invalidBind: return "监听地址不能为空，不能含空白字符，也不能以 - 开头"
-        case .invalidKey: return "Key 不能以 - 开头，也不能含空白字符"
+        case .invalidKey: return "Key 名称不能含空白；路径可含空格。均不能以 - 开头或含换行、空字符"
         case .noServices: return "至少需要一项服务（端口、服务名、共享目录或 exec 命令）"
         case .invalidService(let s): return "无效的服务项：\(s)"
         case .sshNeedsAuthorizedKeys: return "ssh 服务必须配置授权公钥来源（--ssh-authorized-keys）"
@@ -244,17 +246,26 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
     /// Server identity depends on whether a saved `default` key exists.
     public var mayBeEphemeralServer: Bool { !kind.isClient && (key.isEmpty || key == "new") }
 
+    public func duplicate() -> TunnelRule {
+        var copy = self
+        copy.id = UUID()
+        copy.name += " 副本"
+        copy.autoStart = false
+        return copy
+    }
+
     // MARK: Validation
 
     public func validate() -> [RuleIssue] {
         var issues: [RuleIssue] = []
         if name.trimmingCharacters(in: .whitespaces).isEmpty { issues.append(.emptyName) }
-        if !key.isEmpty && !Self.isSafeToken(key) { issues.append(.invalidKey) }
+        if !key.isEmpty && !Self.isSafeKey(key) { issues.append(.invalidKey) }
 
         switch kind {
         case .forward:
             if remoteID == nil && !Self.isSafeToken(address) { issues.append(.invalidAddress) }
-            if cleanedMappings.isEmpty { issues.append(.noMappings) }
+            if cleanedMappings.isEmpty && !openBrowser { issues.append(.noMappings) }
+            if openBrowser && cleanedMappings.count != 1 { issues.append(.openBrowserNeedsOneMapping) }
             for m in cleanedMappings where MappingSpec.parse(m) == nil { issues.append(.invalidMapping(m)) }
             if !Self.isSafeToken(bind) { issues.append(.invalidBind) }
         case .serve:
@@ -387,6 +398,12 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
     }
 
     // MARK: Helpers
+
+    /// Key paths may contain spaces: argv preserves them without shell interpretation.
+    static func isSafeKey(_ s: String) -> Bool {
+        !s.hasPrefix("-") && !s.contains(where: { $0.isNewline || $0 == "\0" })
+            && (s.contains("/") || !s.contains(where: \.isWhitespace))
+    }
 
     static func isSafeToken(_ s: String) -> Bool {
         !s.isEmpty && !s.hasPrefix("-") && !s.contains(where: { $0.isWhitespace || $0.isNewline })

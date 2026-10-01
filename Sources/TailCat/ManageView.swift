@@ -13,6 +13,7 @@ enum SidebarItem: Hashable {
 private struct RuleDraft: Identifiable {
     var rule: TunnelRule
     var isNew: Bool
+    var importError: String? = nil
     var id: UUID { rule.id }
 }
 
@@ -30,65 +31,79 @@ struct ManageView: View {
     @ViewState private var showWizard = false
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $navigation.selection) {
-                ForEach(TunnelKind.displayOrder, id: \.self) { kind in
-                    let runners = manager.runners.filter { $0.rule.kind == kind }
-                    if !runners.isEmpty {
-                        Section(kind.label) {
-                            ForEach(runners) { runner in
-                                SidebarRow(runner: runner).tag(SidebarItem.rule(runner.id))
+        VStack(spacing: 0) {
+            if let error = manager.loadError {
+                HStack(alignment: .top) {
+                    Text(Diagnostics.mask(error)).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                    Spacer()
+                    Button { manager.dismissError() } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.plain).help("关闭提示").accessibilityLabel("关闭错误提示")
+                }
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            NavigationSplitView {
+                List(selection: $navigation.selection) {
+                    ForEach(TunnelKind.displayOrder, id: \.self) { kind in
+                        let runners = manager.runners.filter { $0.rule.kind == kind }
+                        if !runners.isEmpty {
+                            Section(kind.label) {
+                                ForEach(runners) { runner in
+                                    SidebarRow(runner: runner).tag(SidebarItem.rule(runner.id))
+                                }
                             }
                         }
                     }
-                }
-                Section("远端") {
-                    ForEach(manager.remotes) { remote in
-                        HStack {
-                            Label(remote.name, systemImage: "desktopcomputer")
-                            Spacer()
-                            RemoteStatusDot(status: manager.remotePings[remote.id])
-                        }
-                        .tag(SidebarItem.remote(remote.id))
-                        .help("拖入文件即可发送到该远端")
-                        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                            loadURLs(providers) { FileSender.send($0, to: remote, using: manager.cli) }
-                            return true
+                    Section("远端") {
+                        ForEach(manager.remotes) { remote in
+                            HStack {
+                                Label(remote.name, systemImage: "desktopcomputer")
+                                Spacer()
+                                RemoteStatusDot(status: manager.remotePings[remote.id])
+                            }
+                            .tag(SidebarItem.remote(remote.id))
+                            .help("拖入文件即可发送到该远端")
+                            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                                loadURLs(providers) { FileSender.send($0, to: remote, using: manager.cli) }
+                                return true
+                            }
                         }
                     }
+                    Section("工具") {
+                        Label("密钥", systemImage: "key").tag(SidebarItem.keys)
+                        Label("通讯录", systemImage: "person.2").tag(SidebarItem.contacts)
+                    }
                 }
-                Section("工具") {
-                    Label("密钥", systemImage: "key").tag(SidebarItem.keys)
-                    Label("通讯录", systemImage: "person.2").tag(SidebarItem.contacts)
+                .listStyle(.sidebar)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+                .background(SplitSeamAlign())
+                .toolbar {
+                    ToolbarItem {
+                        Menu {
+                            Button("转发（本机端口 → 远端）") { newRule(.forward) }
+                            Button("SOCKS 代理") { newRule(.socks) }
+                            Divider()
+                            Button("服务（把本机端口/目录/SSH 提供给别人）") { newRule(.serve) }
+                            Button("收件箱（接收文件）") { newRule(.recv) }
+                            Divider()
+                            Button("远端…") { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
+                            Button("DNS 发布向导…") { showWizard = true }
+                        } label: { Label("新增", systemImage: "plus") }
+                    }
                 }
+            } detail: {
+                detail
             }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 200, ideal: 230)
-            .background(SplitSeamAlign())
-            .toolbar {
-                ToolbarItem {
-                    Menu {
-                        Button("转发（本机端口 → 远端）") { newRule(.forward) }
-                        Button("SOCKS 代理") { newRule(.socks) }
-                        Divider()
-                        Button("服务（把本机端口/目录/SSH 提供给别人）") { newRule(.serve) }
-                        Button("收件箱（接收文件）") { newRule(.recv) }
-                        Divider()
-                        Button("远端…") { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
-                        Button("DNS 发布向导…") { showWizard = true }
-                    } label: { Label("新增", systemImage: "plus") }
-                }
-            }
-        } detail: {
-            detail
         }
         .sheet(item: $ruleDraft) { draft in
-            RuleEditor(rule: draft.rule, isNew: draft.isNew, contacts: manager.contacts) { saved in
+            RuleEditor(rule: draft.rule, isNew: draft.isNew, contacts: manager.contacts,
+                       importError: draft.importError) { saved in
                 if draft.isNew {
-                    manager.add(saved)
+                    guard manager.add(saved) else { return false }
                     navigation.selection = .rule(saved.id)
+                    return true
                 } else {
-                    manager.update(saved)
+                    return manager.update(saved)
                 }
             }
         }
@@ -119,8 +134,9 @@ struct ManageView: View {
             if let runner = manager.runner(id: id) {
                 RuleDetail(runner: runner,
                            onEdit: { ruleDraft = RuleDraft(rule: runner.rule, isNew: false) },
-                           onDelete: { manager.remove(id: id); navigation.selection = nil },
-                           onShowRemote: { navigation.selection = .remote($0) })
+                           onDelete: { if manager.remove(id: id) { navigation.selection = nil } },
+                           onShowRemote: { navigation.selection = .remote($0) },
+                           onDuplicate: { ruleDraft = RuleDraft(rule: runner.rule.duplicate(), isNew: true) })
                     .id(id)
             } else {
                 placeholder
@@ -131,7 +147,8 @@ struct ManageView: View {
                              onEdit: { remoteDraft = RemoteDraft(remote: remote, isNew: false) },
                              onDeleted: { navigation.selection = nil },
                              onNewRule: { newRule($0, remoteID: id) },
-                             onShowRule: { navigation.selection = .rule($0) })
+                             onShowRule: { navigation.selection = .rule($0) },
+                             onBrowse: { openWebsite(remoteID: id) })
                     .id(id)
             } else {
                 placeholder
@@ -163,7 +180,6 @@ struct ManageView: View {
             } else {
                 Text("选择左侧项目，或点 + 新增转发、服务、收件箱或远端").foregroundStyle(.secondary)
             }
-            if let error = manager.loadError { Text(error).foregroundStyle(.red).font(.caption) }
         }
         .frame(maxWidth: 480)
         .padding()
@@ -171,21 +187,22 @@ struct ManageView: View {
 
     private func newRule(_ kind: TunnelKind, remoteID: UUID? = nil) {
         var draft = TunnelRule(kind: kind)
+        var importError: String?
         switch kind {
         case .forward:
             draft.remoteID = remoteID ?? manager.remotes.first?.id
             // A copied address or `tailcat forward …` command pre-fills the form.
-            if remoteID == nil, let clip = Clipboard.string, let imported = AddressTools.importForward(clip) {
-                if let existing = manager.remotes.first(where: { $0.address == imported.address }) {
-                    draft.remoteID = existing.id
-                } else {
-                    draft.remoteID = nil
-                    draft.address = imported.address
-                    draft.key = imported.key ?? ""
+            if remoteID == nil, let clip = Clipboard.string {
+                switch AddressTools.parseForward(clip) {
+                case .success(let imported):
+                    imported.apply(to: &draft, remotes: manager.remotes)
+                    draft.name = "未命名"
+                case .failure(let error):
+                    // Ordinary clipboard text is not an import attempt.
+                    if clip.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("tailcat ") {
+                        importError = error.localizedDescription
+                    }
                 }
-                draft.mappings = imported.mappings
-                if let bind = imported.bind { draft.bind = bind }
-                draft.name = "未命名"
             }
         case .socks:
             draft.remoteID = remoteID
@@ -196,7 +213,19 @@ struct ManageView: View {
         case .recv:
             draft.name = "收件箱"
         }
-        ruleDraft = RuleDraft(rule: draft, isNew: true)
+        ruleDraft = RuleDraft(rule: draft, isNew: true, importError: importError)
+    }
+
+    private func openWebsite(remoteID: UUID) {
+        guard let runner = manager.websiteRule(for: remoteID) else { return }
+        if runner.state.isActive {
+            if let listener = runner.listeners.first, let url = URL(string: "http://\(listener.hostPort)/") {
+                NSWorkspace.shared.open(url)
+            }
+        } else {
+            runner.start()
+        }
+        navigation.selection = .rule(runner.id)
     }
 }
 

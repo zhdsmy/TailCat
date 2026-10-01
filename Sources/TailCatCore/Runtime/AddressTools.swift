@@ -35,12 +35,60 @@ public struct ForwardImport: Equatable, Sendable {
     public var mappings: [String]
     public var bind: String?
     public var key: String?
+    public var openBrowser: Bool
+    public var isCommand: Bool
 
-    public init(address: String, mappings: [String] = [], bind: String? = nil, key: String? = nil) {
+    public init(address: String, mappings: [String] = [], bind: String? = nil, key: String? = nil,
+                openBrowser: Bool = false, isCommand: Bool = false) {
         self.address = address
         self.mappings = mappings
         self.bind = bind
         self.key = key
+        self.openBrowser = openBrowser
+        self.isCommand = isCommand
+    }
+
+    /// Applies the imported destination and command options, returning a matching saved remote.
+    @discardableResult
+    public func apply(to rule: inout TunnelRule, remotes: [Remote]) -> UUID? {
+        let remote = remotes.first { $0.address == address && $0.key == (key ?? "") }
+        rule.remoteID = remote?.id
+        rule.address = remote == nil ? address : ""
+        rule.key = remote == nil ? (key ?? "") : ""
+        if isCommand {
+            rule.mappings = mappings
+            rule.bind = bind ?? "127.0.0.1"
+            rule.openBrowser = openBrowser
+        }
+        return remote?.id
+    }
+
+    /// Applies a pasted destination to a remote draft. A bare address clears any previously chosen key.
+    public func apply(to remote: inout Remote) {
+        remote.address = address
+        remote.key = key ?? ""
+    }
+}
+
+public enum ForwardImportError: Error, Equatable, Sendable, LocalizedError {
+    case unrecognized
+    case invalidQuoting
+    case invalidAddress
+    case invalidMapping
+    case missingOptionValue(String)
+    case unsupportedOption(String)
+    case unsupportedShellSyntax
+
+    public var errorDescription: String? {
+        switch self {
+        case .unrecognized: return "剪贴板里没有可识别的 tc 地址或 forward 命令"
+        case .invalidQuoting: return "命令中的引号或转义不完整"
+        case .invalidAddress: return "命令中的远端地址无效"
+        case .invalidMapping: return "命令中包含无效的端口映射"
+        case .missingOptionValue(let option): return "参数 \(option) 缺少值"
+        case .unsupportedOption(let option): return "无法导入参数 \(option)；请先移除它或在 TailCat 中单独配置"
+        case .unsupportedShellSyntax: return "命令含有 shell 展开或操作符；请将字面值用单引号包住，或只粘贴单独的 forward 命令"
+        }
     }
 }
 
@@ -73,48 +121,70 @@ public enum AddressTools {
     ]
 
     /// Recognises a bare tc… / DNS address or `tailcat [global-flags] forward [flags] <addr> <maps…>`.
-    public static func importForward(_ raw: String) -> ForwardImport? {
+    /// This is a tokenizer only: it understands shell quoting but never expands or executes shell syntax.
+    public static func parseForward(_ raw: String) -> Result<ForwardImport, ForwardImportError> {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
-
-        if !text.contains(where: \.isWhitespace), looksLikeDestination(text) {
-            return ForwardImport(address: text)
+        guard !text.isEmpty else { return .failure(.unrecognized) }
+        var tokens: [String]
+        switch tokenize(text) {
+        case .success(let parsed): tokens = parsed
+        case .failure(let error): return .failure(error)
         }
-
-        var tokens = tokenize(text)
-        guard !tokens.isEmpty else { return nil }
+        guard !tokens.isEmpty else { return .failure(.unrecognized) }
+        if tokens.count == 1, looksLikeDestination(tokens[0]) {
+            return .success(ForwardImport(address: tokens[0]))
+        }
         if tokens[0] == "tailcat" { tokens.removeFirst() }
+        guard !tokens.isEmpty else { return .failure(.unrecognized) }
 
         var key: String?
-        var bind: String?
         var i = 0
         var sawForward = false
         while i < tokens.count {
             let t = tokens[i]
             if t == "forward" { sawForward = true; i += 1; break }
-            if knownSubcommands.contains(t) { return nil }
-            if t.hasPrefix("--key=") { key = String(t.dropFirst("--key=".count)); i += 1; continue }
-            if t == "--key", i + 1 < tokens.count { key = tokens[i + 1]; i += 2; continue }
-            if t.hasPrefix("--derpmap-url=") || t == "--verbose" || t == "--json" { i += 1; continue }
-            if t == "--derpmap-url", i + 1 < tokens.count { i += 2; continue }
-            if t.hasPrefix("-") { return nil }
-            break
+            if t.hasPrefix("--key=") {
+                key = String(t.dropFirst("--key=".count)); i += 1; continue
+            }
+            if t == "--key" {
+                guard i + 1 < tokens.count else { return .failure(.missingOptionValue(t)) }
+                key = tokens[i + 1]; i += 2; continue
+            }
+            if t == "--derpmap-url" || t.hasPrefix("--derpmap-url=") {
+                return .failure(.unsupportedOption("--derpmap-url"))
+            }
+            if t == "--verbose" || t == "--json" { i += 1; continue }
+            if t.hasPrefix("-") { return .failure(.unsupportedOption(optionName(t))) }
+            return .failure(.unrecognized)
         }
-        guard sawForward else { return nil }
+        guard sawForward else { return .failure(.unrecognized) }
 
+        var bind = "127.0.0.1"
+        var openBrowser = false
         while i < tokens.count {
             let t = tokens[i]
             if t.hasPrefix("--bind=") { bind = String(t.dropFirst("--bind=".count)); i += 1; continue }
-            if t == "--bind", i + 1 < tokens.count { bind = tokens[i + 1]; i += 2; continue }
-            if t == "--open-browser" { i += 1; continue }
+            if t == "--bind" {
+                guard i + 1 < tokens.count else { return .failure(.missingOptionValue(t)) }
+                bind = tokens[i + 1]; i += 2; continue
+            }
+            if t == "--open-browser" { openBrowser = true; i += 1; continue }
+            if t.hasPrefix("-") { return .failure(.unsupportedOption(optionName(t))) }
             break
         }
 
-        guard i < tokens.count, looksLikeDestination(tokens[i]) else { return nil }
+        guard i < tokens.count, looksLikeDestination(tokens[i]) else { return .failure(.invalidAddress) }
         let address = tokens[i]
         i += 1
-        let mappings = Array(tokens[i...]).filter { MappingSpec.parse($0) != nil }
-        return ForwardImport(address: address, mappings: mappings, bind: bind, key: key)
+        let mappings = Array(tokens[i...])
+        guard mappings.allSatisfy({ MappingSpec.parse($0) != nil }) else { return .failure(.invalidMapping) }
+        return .success(ForwardImport(address: address, mappings: mappings, bind: bind, key: key,
+                                      openBrowser: openBrowser, isCommand: true))
+    }
+
+    /// Best-effort compatibility wrapper for callers that only need to recognise importable text.
+    public static func importForward(_ raw: String) -> ForwardImport? {
+        try? parseForward(raw).get()
     }
 
     public static func looksLikeAddress(_ s: String) -> Bool {
@@ -127,8 +197,59 @@ public enum AddressTools {
         return s.hasPrefix("tc") || s.contains(".")
     }
 
-    private static func tokenize(_ text: String) -> [String] {
-        // Simple whitespace split; quoted args are uncommon for the commands we import.
-        text.split(whereSeparator: \.isWhitespace).map(String.init)
+    private static func optionName(_ token: String) -> String {
+        String(token.prefix { $0 != "=" })
+    }
+
+    private static func tokenize(_ text: String) -> Result<[String], ForwardImportError> {
+        enum Quote { case none, single, double }
+        var quote = Quote.none
+        var tokens: [String] = []
+        var token = ""
+        var started = false
+        let chars = Array(text)
+        var i = 0
+        while i < chars.count {
+            let c = chars[i]
+            switch quote {
+            case .single:
+                if c == "'" { quote = .none } else { token.append(c) }
+            case .double:
+                if c == "\\" {
+                    guard i + 1 < chars.count else { return .failure(.invalidQuoting) }
+                    let next = chars[i + 1]
+                    if next == "\"" || next == "\\" || next == "$" || next == "`" {
+                        token.append(next); i += 1
+                    } else {
+                        token.append(c)
+                    }
+                } else if c == "\"" {
+                    quote = .none
+                } else if c == "$" || c == "`" {
+                    return .failure(.unsupportedShellSyntax)
+                } else {
+                    token.append(c)
+                }
+            case .none:
+                if c.isWhitespace {
+                    if started { tokens.append(token); token = ""; started = false }
+                } else if c == "'" {
+                    quote = .single; started = true
+                } else if c == "\"" {
+                    quote = .double; started = true
+                } else if c == "\\" {
+                    guard i + 1 < chars.count else { return .failure(.invalidQuoting) }
+                    i += 1; token.append(chars[i]); started = true
+                } else if "$`".contains(c) || ";|&<>()".contains(c) {
+                    return .failure(.unsupportedShellSyntax)
+                } else {
+                    token.append(c); started = true
+                }
+            }
+            i += 1
+        }
+        guard case .none = quote else { return .failure(.invalidQuoting) }
+        if started { tokens.append(token) }
+        return .success(tokens)
     }
 }

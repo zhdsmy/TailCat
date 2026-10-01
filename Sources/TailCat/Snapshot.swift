@@ -17,7 +17,7 @@ enum Snapshot {
         let output = URL(fileURLWithPath: arguments[i + 1], isDirectory: true)
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
-        if arguments.contains("--dark") { app.appearance = NSAppearance(named: .darkAqua) }
+        app.appearance = NSAppearance(named: arguments.contains("--dark") ? .darkAqua : .aqua)
         Task {
             let status: Int32
             do { try await capture(to: output); status = 0 } catch {
@@ -46,6 +46,14 @@ enum Snapshot {
         try await renderer.page("empty-menu", MenuContent(), in: empty)
         try await renderer.page("empty-manage", ManageView(), in: empty, size: CGSize(width: 900, height: 520))
         try await renderer.page("empty-settings", SettingsView(), in: empty)
+
+        let unreadable = try SampleWorld(tailcatInstalled: false)
+        defer { unreadable.tearDown() }
+        try SecureFile.write(Data(#"{"version":999,"futureItems":[]}"#.utf8),
+                             to: unreadable.directory.appendingPathComponent("data/rules.json"))
+        unreadable.manager.bootstrap()
+        try await renderer.page("storage-load-failed", ManageView(), in: unreadable,
+                                size: CGSize(width: 900, height: 520))
     }
 
     private static func capturePopulated(_ sample: SampleWorld, _ renderer: Renderer) async throws {
@@ -69,10 +77,20 @@ enum Snapshot {
         try await manage("contacts", .contacts, height: 500)
         try await page("settings", SettingsView())
         if let rule = manager.runner(id: sample.forwardID)?.rule {
-            try await page("editor-forward", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts) { _ in })
+            try await page("editor-forward", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts) { _ in true })
+            try await page("editor-rule-save-failed", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts,
+                                                                 saveError: "保存失败：数据文件暂时无法写入，请重试。") { _ in false })
+            try await page("editor-import-failed", RuleEditor(rule: rule.duplicate(), isNew: true, contacts: manager.contacts,
+                                                              importError: "命令中包含无效的端口映射") { _ in true })
+            let dataFile = sample.directory.appendingPathComponent("data/rules.json")
+            try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: dataFile.path)
+            defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: dataFile.path) }
+            _ = manager.remove(id: rule.id)
+            try await manage("rule-delete-failed", .rule(rule.id), height: 660)
+            manager.dismissError()
         }
         if let rule = manager.runner(id: sample.serveID)?.rule {
-            try await page("editor-serve", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts) { _ in })
+            try await page("editor-serve", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts) { _ in true })
         }
         if let remote = manager.remote(id: sample.macMiniID) {
             try await page("editor-remote", RemoteEditor(remote: remote, isNew: false) { _ in true })
@@ -84,13 +102,13 @@ enum Snapshot {
         try await page("remote-delete-failed", RemoteDetail(remote: unusedRemote, onEdit: {}, onDeleted: {},
                                                            onNewRule: { _ in }, onShowRule: { _ in },
                                                            deleteError: "无法删除远端：数据文件暂时无法写入，请重试。"))
-        try await page("editor-new-socks", RuleEditor(rule: TunnelRule(kind: .socks), isNew: true, contacts: manager.contacts) { _ in })
-        try await page("editor-new-recv", RuleEditor(rule: TunnelRule(kind: .recv), isNew: true, contacts: manager.contacts) { _ in })
+        try await page("editor-new-socks", RuleEditor(rule: TunnelRule(kind: .socks), isNew: true, contacts: manager.contacts) { _ in true })
+        try await page("editor-new-recv", RuleEditor(rule: TunnelRule(kind: .recv), isNew: true, contacts: manager.contacts) { _ in true })
         try await page("key-new-server", KeyCreateSheet(role: .server))
         try await page("key-new-client", KeyCreateSheet(role: .client))
         try await page("dns-wizard", DNSWizard())
         try await page("dns-wizard-published", DNSWizard(address: "tcDNS" + String(repeating: "q7Xk2PzR", count: 10)))
-        try await page("contact-editor", ContactEditor(contact: Contact(), isNew: true) { _ in })
+        try await page("contact-editor", ContactEditor(contact: Contact(), isNew: true) { _ in true })
     }
 }
 
@@ -108,6 +126,9 @@ private final class Renderer {
             .environmentObject(sample.manager)
             .environmentObject(sample.navigation)
             .background(Color(nsColor: .windowBackgroundColor))
+            // Give SwiftUI the same viewport as the window; otherwise split views can grow
+            // their hosting bounds and leave the top of a fixed-size capture outside the bitmap.
+            .frame(width: size?.width, height: size?.height)
         let host = NSHostingView(rootView: root)
         let frame = CGRect(origin: .zero, size: size ?? host.fittingSize)
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
