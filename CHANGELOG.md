@@ -4,9 +4,12 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-01
+
 ### 修复
 
 - 保存远端失败时（如数据文件无法写入），远端不再只留在内存里：编辑窗口保持打开并显示错误，规则也不会引用这个未保存的远端而在保存时丢失地址。删除远端同理，保存成功后才从列表移除。
+- 删除远端失败时在详情页显示错误；重新保存时清除上次错误，错误中的 tc 地址默认打码。
 - 不再按 0.1.0 留下的 `pids.json` 终止进程：旧记录只有 pid，无法确认仍是 TailCat 启动的进程，0.1.1 可能误杀复用了该 pid 的其他 tailcat。
 
 ### 升级提示
@@ -66,6 +69,7 @@
 
 - Bundle ID 由 `app.tailcat.menubar` 改为 `io.github.zhdsmy.TailCat`。自己构建过旧版本的用户：规则、远端等数据（`~/Library/Application Support/TailCat/`）不受影响，偏好设置会在首次启动时自动迁移；“登录时启动”需要重新打开，并在“系统设置 › 通用 › 登录项”里删掉旧条目；系统会重新询问通知权限。
 
-[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/zhdsmy/TailCat/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/zhdsmy/TailCat/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/zhdsmy/TailCat/releases/tag/v0.1.0

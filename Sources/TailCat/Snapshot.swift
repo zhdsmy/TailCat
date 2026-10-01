@@ -76,7 +76,14 @@ enum Snapshot {
         }
         if let remote = manager.remote(id: sample.macMiniID) {
             try await page("editor-remote", RemoteEditor(remote: remote, isNew: false) { _ in true })
+            try await page("editor-remote-save-failed", RemoteEditor(remote: remote, isNew: false,
+                                                                   saveError: "保存失败：数据文件暂时无法写入，请重试。") { _ in false })
         }
+        let unusedRemote = Remote(name: "备用远端", address: SampleWorld.officeAddress)
+        manager.saveRemote(unusedRemote)
+        try await page("remote-delete-failed", RemoteDetail(remote: unusedRemote, onEdit: {}, onDeleted: {},
+                                                           onNewRule: { _ in }, onShowRule: { _ in },
+                                                           deleteError: "无法删除远端：数据文件暂时无法写入，请重试。"))
         try await page("editor-new-socks", RuleEditor(rule: TunnelRule(kind: .socks), isNew: true, contacts: manager.contacts) { _ in })
         try await page("editor-new-recv", RuleEditor(rule: TunnelRule(kind: .recv), isNew: true, contacts: manager.contacts) { _ in })
         try await page("key-new-server", KeyCreateSheet(role: .server))
