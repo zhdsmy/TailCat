@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-01
+
+安全与可靠性修复版本，对应 tailcat v0.7.0。
+
 ### 安全
 
 - DNS 发布向导：未设置允许列表时只能开启 SSH（授权公钥认证）；端口（包括转发到本机 sshd 的 22）和其他服务会对所有读到 TXT 记录的人开放，不再允许创建。
@@ -29,6 +33,11 @@
 - README 增加菜单栏与管理窗口截图（示例数据）。
 - 示例地址统一使用虚构的 `192.168.1.10`。
 
+### 升级提示
+
+- 已有规则不会被自动修改：用 0.1.0 的 DNS 发布向导创建、没有设置允许列表却包含端口或其他服务的规则，仍然对所有读到 TXT 记录的人开放。请在规则里设置允许列表，或只保留 `ssh`。
+- SSH 授权公钥来源写成 `github:用户名` 或 `https://github.com/用户名.keys` 的规则在 0.1.0 中本来就无法启动；编辑这类规则时会提示改成 `用户名@github`。
+
 ## [0.1.0] - 2026-09-30
 
 首个公开版本，对应 tailcat v0.7.0。
@@ -48,5 +57,6 @@
 
 - Bundle ID 由 `app.tailcat.menubar` 改为 `io.github.zhdsmy.TailCat`。自己构建过旧版本的用户：规则、远端等数据（`~/Library/Application Support/TailCat/`）不受影响，偏好设置会在首次启动时自动迁移；“登录时启动”需要重新打开，并在“系统设置 › 通用 › 登录项”里删掉旧条目；系统会重新询问通知权限。
 
-[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/zhdsmy/TailCat/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/zhdsmy/TailCat/releases/tag/v0.1.0
