@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-01
+
 ### 新增
 
 - 菜单栏与管理窗口增加“使用说明”，覆盖连接设备、共享目录、收发文件与排查问题；空白页按使用目标提供入口，复制按钮增加“已复制”反馈。
@@ -27,6 +29,10 @@
 - 自动打开浏览器时校验恰好一条端口映射，与 tailcat 二进制要求保持一致。
 - 服务端端口映射（`8080:80`、`5555:192.168.1.10:5555`）在 tailcat v0.7.0 中尚不支持，之前保存后会启动失败；现在检测到命令行不支持时保存前提示改写，设置中同时显示该能力。
 - 收件箱等文件写入完成后才发通知，不再在上传刚开始时提示、点开看到不完整的文件。
+
+### 升级提示
+
+- 用 tailcat v0.7.0 时，含 `8080:80` 这类端口映射的服务规则本来就无法启动；编辑这类规则会提示改成只写端口，或在 tailcat 发布支持映射的版本后到设置里“重新检测”。
 
 ## [0.1.2] - 2026-10-01
 
@@ -93,7 +99,8 @@
 
 - Bundle ID 由 `app.tailcat.menubar` 改为 `io.github.zhdsmy.TailCat`。自己构建过旧版本的用户：规则、远端等数据（`~/Library/Application Support/TailCat/`）不受影响，偏好设置会在首次启动时自动迁移；“登录时启动”需要重新打开，并在“系统设置 › 通用 › 登录项”里删掉旧条目；系统会重新询问通知权限。
 
-[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/zhdsmy/TailCat/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/zhdsmy/TailCat/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/zhdsmy/TailCat/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/zhdsmy/TailCat/releases/tag/v0.1.0
