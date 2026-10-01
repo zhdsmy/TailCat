@@ -412,6 +412,10 @@ struct DNSWizard: View {
             }
             .formStyle(.grouped)
             .frame(height: 440)
+            if address != nil && manager.capabilities == nil {
+                Text("正在检测 tailcat 功能，完成后可创建服务规则。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let error { Text(Diagnostics.mask(error)).font(.caption).foregroundStyle(.red) }
             HStack {
                 Spacer()
@@ -419,7 +423,7 @@ struct DNSWizard: View {
                 if address != nil {
                     Button("创建服务规则") { createRule() }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(allow.isEmpty && !(useSSH && !sshKeys.trimmingCharacters(in: .whitespaces).isEmpty))
+                        .disabled(manager.capabilities == nil || (allow.isEmpty && !(useSSH && !sshKeys.trimmingCharacters(in: .whitespaces).isEmpty)))
                 }
             }
         }
@@ -453,7 +457,7 @@ struct DNSWizard: View {
             key: keyName.trimmingCharacters(in: .whitespaces), services: services,
             allow: manager.contacts.map(\.publicKey).filter(allow.contains).joined(separator: ","),
             sshAuthorizedKeys: useSSH ? sshKeys.trimmingCharacters(in: .whitespaces) : "")
-        let issues = rule.validate(capabilities: manager.capabilities)
+        let issues = manager.validateForSave(rule)
         guard issues.isEmpty else { error = issues.map(\.description).joined(separator: "；"); return }
         guard rule.authenticatesEveryClient else {
             error = "未设置允许列表时只能开启 SSH：端口和其他服务会对所有读到 DNS 记录的人开放。"

@@ -27,7 +27,8 @@ public final class RuleManager: ObservableObject {
     @Published public private(set) var binaryPath: String?
     @Published public private(set) var versionText: String?
     @Published public private(set) var tailcatVersion: TailcatVersion?
-    @Published public private(set) var capabilities = TailcatCapabilities()
+    /// nil until the current binary's capability check finishes.
+    @Published public private(set) var capabilities: TailcatCapabilities?
     /// Files that arrived in a recv rule's directory since the user last looked.
     @Published public private(set) var inbox: [UUID: [String]] = [:]
     @Published public private(set) var remotePings: [UUID: RemotePing] = [:]
@@ -51,6 +52,7 @@ public final class RuleManager: ObservableObject {
     private var watchers: [UUID: DirectoryWatcher] = [:]
     private var livePIDs: [String: PIDTracker.Identity] = [:]
     private var storeErrors: [URL: String] = [:]
+    private var infoGeneration = 0
 
     public init(
         store: RuleStore = RuleStore(directory: RuleStore.defaultDirectory()),
@@ -114,12 +116,24 @@ public final class RuleManager: ObservableObject {
 
     /// Version, capabilities and saved keys; re-run after the tailcat path changes.
     public func refreshTailcatInfo() async {
+        infoGeneration += 1
+        let generation = infoGeneration
+        capabilities = nil
         refreshBinary()
-        versionText = await cli.version()
+        let text = await cli.version()
         let (version, caps) = await cli.capabilities()
+        // A slower check for a previous binary must not replace the latest result.
+        guard generation == infoGeneration else { return }
+        versionText = text
         tailcatVersion = version
         capabilities = caps
         await refreshKeys()
+    }
+
+    public func validateForSave(_ rule: TunnelRule) -> [RuleIssue] {
+        var issues = rule.validate(capabilities: capabilities)
+        if rule.kind == .serve, capabilities == nil { issues.append(.capabilitiesPending) }
+        return issues
     }
 
     public func refreshKeys() async {

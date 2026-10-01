@@ -522,7 +522,10 @@ struct PerfPanel: View {
 
     var body: some View {
         GroupBox("测速（tailcat perf）") {
-            if manager.capabilities.perf { panel } else { unsupported }
+            if manager.capabilities == nil {
+                Text("正在检测 tailcat 功能…").foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if manager.capabilities?.perf == true { panel } else { unsupported }
         }
     }
 

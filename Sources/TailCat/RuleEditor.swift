@@ -113,6 +113,7 @@ struct RuleEditor: View {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") { save(confirmed: false) }.keyboardShortcut(.defaultAction)
+                    .disabled(rule.kind == .serve && manager.capabilities == nil)
             }
         }
         .padding()
@@ -220,7 +221,10 @@ struct RuleEditor: View {
         }
         Section("端口与映射（每行一条，可选）") {
             TextEditor(text: $listText).font(.body.monospaced()).frame(height: 60)
-            if manager.capabilities.serveMappings {
+            if manager.capabilities == nil {
+                Text("正在检测 tailcat 功能，完成后可保存服务规则。")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if manager.capabilities?.serveMappings == true {
                 Text("如 22、8000-8999、8080:80（隧道 8080 → 本机 80）、5555:192.168.1.10:5555")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
@@ -240,9 +244,9 @@ struct RuleEditor: View {
                         if item.risky { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
                     }
                 }
-                .disabled(item.name == "perf" && !manager.capabilities.perf && !namedServices.contains("perf"))
+                .disabled(item.name == "perf" && manager.capabilities?.perf != true && !namedServices.contains("perf"))
             }
-            if !manager.capabilities.perf {
+            if manager.capabilities?.perf == false {
                 Text("当前命令行版本不含测速功能。安装支持此功能的版本后重新检测。")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -382,7 +386,7 @@ struct RuleEditor: View {
     private func save(confirmed: Bool) {
         saveError = nil
         let c = candidate()
-        issues = c.validate(capabilities: manager.capabilities)
+        issues = manager.validateForSave(c)
         guard issues.isEmpty else { return }
         if c.needsAllowWarning && !confirmed {
             confirmRisk = true
