@@ -61,7 +61,7 @@ let sampleKey = "nodekey:" + String(repeating: "ab", count: 32)
 
 @Suite struct ServeItemTests {
     @Test(arguments: ["22", "ssh", "no-auth-ssh", "files", "exec", "exit-node", "all", "perf",
-                      "8000-8999", "8080:80", "5555:10.2.200.213:5555", "5555:[fd7a::1]:5555"])
+                      "8000-8999", "8080:80", "5555:192.168.1.10:5555", "5555:[fd7a::1]:5555"])
     func accepts(_ item: String) {
         #expect(ServeItem.isValid(item))
     }
@@ -161,14 +161,14 @@ let sampleKey = "nodekey:" + String(repeating: "ab", count: 32)
         var r = serve(["22", "8080:80, 5555:10.0.0.2:5555", "ssh"])
         r.key = "home"
         r.allow = "\(sampleKey), none"
-        r.sshAuthorizedKeys = "https://github.com/me.keys"
+        r.sshAuthorizedKeys = "me@github, /Users/me/.ssh/authorized_keys"
         r.filesDir = "/Users/me/Share"
         r.filesMode = .woPlus
         r.fullAddress = true
         #expect(r.validate().isEmpty)
         #expect(r.arguments(settings: settings) == [
             "--key=home", "--json", "serve", "--full-address", "--allow=\(sampleKey),none",
-            "--ssh-authorized-keys=https://github.com/me.keys", "--files=/Users/me/Share:wo+",
+            "--ssh-authorized-keys=me@github, /Users/me/.ssh/authorized_keys", "--files=/Users/me/Share:wo+",
             "22", "8080:80", "5555:10.0.0.2:5555", "ssh",
         ])
     }
@@ -204,6 +204,32 @@ let sampleKey = "nodekey:" + String(repeating: "ab", count: 32)
         r.allow = ""
         r.sshAuthorizedKeys = "-x"
         #expect(r.validate().contains(.invalidAuthorizedKeys))
+        // Forms tailcat would read as file paths and fail on.
+        var ssh = serve(["ssh"])
+        ssh.sshAuthorizedKeys = "me@github, github:me,https://github.com/me.keys"
+        #expect(ssh.validate() == [.unsupportedKeySource("github:me"), .unsupportedKeySource("https://github.com/me.keys")])
+        ssh.services = ["ssh", "no-auth-ssh"]
+        ssh.sshAuthorizedKeys = "me@github"
+        #expect(ssh.validate() == [.sshConflict])
+    }
+
+    @Test func publicAddressNeedsAllowOrKeyAuthenticatedSSHOnly() {
+        var ssh = serve(["ssh"])
+        ssh.sshAuthorizedKeys = "me@github"
+        #expect(ssh.authenticatesEveryClient)
+        // A plain port 22 reaches the local sshd, which may take passwords.
+        for extra in ["22", "8080", "no-auth-ssh", "exit-node", "all"] {
+            var mixed = ssh
+            mixed.services = ["ssh", extra]
+            #expect(!mixed.authenticatesEveryClient, "\(extra)")
+        }
+        var files = ssh
+        files.filesDir = "/tmp"
+        #expect(!files.authenticatesEveryClient)
+        var allowed = serve(["22", "8080"])
+        allowed.allow = sampleKey
+        #expect(allowed.authenticatesEveryClient)
+        #expect(!serve(["ssh"]).authenticatesEveryClient)
     }
 
     @Test func allowWarningForRiskyServices() {
@@ -231,12 +257,15 @@ let sampleKey = "nodekey:" + String(repeating: "ab", count: 32)
 
     @Test func peerCommands() {
         var r = serve(["8080:80", "ssh"])
-        r.sshAuthorizedKeys = "github:me"
+        r.sshAuthorizedKeys = "me@github"
         let cmds = r.peerCommands(serverAddress: "tcS")
         #expect(cmds.contains("tailcat forward tcS 8080"))
         #expect(cmds.contains("tailcat ssh tcS"))
-        #expect(cmds.contains("tailcat ls -l tcS"))
+        // ls has no SSH key to offer a key-authenticated server; scp does.
+        #expect(!cmds.contains("tailcat ls -l tcS"))
+        #expect(cmds.contains("tailcat cp tcS:<文件> ."))
         #expect(cmds.last == "tailcat ping tcS")
+        #expect(serve(["no-auth-ssh"]).peerCommands(serverAddress: "tcS").contains("tailcat ls -l tcS"))
     }
 }
 

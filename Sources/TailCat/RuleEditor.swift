@@ -183,7 +183,7 @@ struct RuleEditor: View {
         }
         Section("端口与映射（每行一条，可选）") {
             TextEditor(text: $listText).font(.body.monospaced()).frame(height: 60)
-            Text("如 22、8000-8999、8080:80（隧道 8080 → 本机 80）、5555:10.2.200.213:5555")
+            Text("如 22、8000-8999、8080:80（隧道 8080 → 本机 80）、5555:192.168.1.10:5555")
                 .font(.caption).foregroundStyle(.secondary)
         }
         Section("服务") {
@@ -204,9 +204,9 @@ struct RuleEditor: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             if namedServices.contains("ssh") || !rule.sshAuthorizedKeys.isEmpty {
-                TextField(text: $rule.sshAuthorizedKeys, prompt: Text("github:alice")) { Text("SSH 授权公钥来源").font(.body) }
+                TextField(text: $rule.sshAuthorizedKeys, prompt: Text("alice@github")) { Text("SSH 授权公钥来源").font(.body) }
                     .font(.body.monospaced())
-                Text("文件路径、一行公钥，或 github:用户名 / https://github.com/用户名.keys")
+                Text("authorized_keys 文件路径、一行公钥，或 用户名@github（取自 github.com/用户名.keys），多个用逗号分隔")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

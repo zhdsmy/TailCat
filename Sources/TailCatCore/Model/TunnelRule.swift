@@ -58,6 +58,8 @@ public enum RuleIssue: Error, Equatable, Sendable, CustomStringConvertible {
     case invalidService(String)
     case sshNeedsAuthorizedKeys
     case invalidAuthorizedKeys
+    case unsupportedKeySource(String)
+    case sshConflict
     case invalidAllow(String)
     case filesNeedsDirectory
     case invalidDirectory
@@ -76,6 +78,8 @@ public enum RuleIssue: Error, Equatable, Sendable, CustomStringConvertible {
         case .invalidService(let s): return "无效的服务项：\(s)"
         case .sshNeedsAuthorizedKeys: return "ssh 服务必须配置授权公钥来源（--ssh-authorized-keys）"
         case .invalidAuthorizedKeys: return "授权公钥来源不能含换行，也不能以 - 开头"
+        case .unsupportedKeySource(let s): return "tailcat 不支持这种公钥来源：\(s)（GitHub 账号写成 用户名@github）"
+        case .sshConflict: return "ssh 与 no-auth-ssh 不能同时开启"
         case .invalidAllow(let s): return "允许列表项无效：\(s)（应为 nodekey:… 或 none）"
         case .filesNeedsDirectory: return "files 服务需要指定共享目录（否则会共享 App 的工作目录）"
         case .invalidDirectory: return "目录必须是绝对路径"
@@ -224,6 +228,16 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
             || s.contains("all") || execServed
     }
 
+    /// Whether a server is safe to reach by a public address (DNS TXT record): `--allow` restricts
+    /// clients, or the only thing served is the key-authenticated `ssh` service. Plain ports (even
+    /// 22 to a local sshd), files and the other services are open to anyone who reads the record.
+    public var authenticatesEveryClient: Bool {
+        guard kind == .serve else { return true }
+        if !allow.trimmingCharacters(in: .whitespaces).isEmpty { return true }
+        return cleanedServices == ["ssh"] && filesDir.isEmpty
+            && !sshAuthorizedKeys.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     /// `--key=new`: a fresh address on every (re)start.
     public var isEphemeralServer: Bool { !kind.isClient && key == "new" }
 
@@ -250,6 +264,13 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
             let sshKeys = sshAuthorizedKeys.trimmingCharacters(in: .whitespaces)
             if services.contains("ssh") && sshKeys.isEmpty { issues.append(.sshNeedsAuthorizedKeys) }
             if sshKeys.hasPrefix("-") || sshKeys.contains(where: \.isNewline) { issues.append(.invalidAuthorizedKeys) }
+            // tailcat reads anything that is not `user@github` or a key line as a file path, so these
+            // forms (once suggested by this app) fail at startup.
+            for source in Self.cleaned(sshKeys.split(separator: ",").map(String.init))
+            where ["github:", "http://", "https://"].contains(where: { source.hasPrefix($0) }) {
+                issues.append(.unsupportedKeySource(source))
+            }
+            if services.contains("ssh") && services.contains("no-auth-ssh") { issues.append(.sshConflict) }
             for entry in Self.allowEntries(allow) where !Self.isValidAllowEntry(entry) {
                 issues.append(.invalidAllow(entry))
             }
@@ -341,7 +362,11 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
                 cmds.append("tailcat ssh \(serverAddress)")
             }
             if !filesDir.isEmpty || services.contains("ssh") || services.contains("no-auth-ssh") {
-                cmds.append("tailcat ls -l \(serverAddress)")
+                // ls speaks SFTP without SSH credentials, so it cannot list a key-authenticated ssh
+                // server; cp goes through the system scp and its keys.
+                if !filesDir.isEmpty || services.contains("no-auth-ssh") {
+                    cmds.append("tailcat ls -l \(serverAddress)")
+                }
                 if filesMode == .ro || filesMode == .rw {
                     cmds.append("tailcat cp \(serverAddress):<文件> .")
                 }

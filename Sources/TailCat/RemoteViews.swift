@@ -229,7 +229,7 @@ struct FileBrowser: View {
                         }
                     }
                 } else {
-                    Text("需要对方 serve 开启 files 或 ssh。可把文件拖到这里发送（投递箱只写不可列出）。")
+                    Text("列出文件需要对方 serve 开启 files 或 no-auth-ssh（ls 不带 SSH 公钥，列不出需公钥认证的 ssh）。可把文件拖到这里发送（投递箱只写不可列出）。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

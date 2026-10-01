@@ -56,7 +56,7 @@ public enum ServeItem {
     public static let namedServices = ["all", "exit-node", "ssh", "no-auth-ssh", "files", "exec", "perf"]
 
     /// Accepts service names, ports, ranges (`8000-8999`), and mappings to localhost (`8080:80`)
-    /// or to a host on the server's network (`5555:10.2.200.213:5555`, `5555:[fd7a::1]:5555`).
+    /// or to a host on the server's network (`5555:192.168.1.10:5555`, `5555:[fd7a::1]:5555`).
     public static func isValid(_ raw: String) -> Bool {
         let s = raw.trimmingCharacters(in: .whitespaces)
         if namedServices.contains(s) { return true }

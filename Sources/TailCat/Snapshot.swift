@@ -82,6 +82,7 @@ enum Snapshot {
         try await page("key-new-server", KeyCreateSheet(role: .server))
         try await page("key-new-client", KeyCreateSheet(role: .client))
         try await page("dns-wizard", DNSWizard())
+        try await page("dns-wizard-published", DNSWizard(address: "tcDNS" + String(repeating: "q7Xk2PzR", count: 10)))
         try await page("contact-editor", ContactEditor(contact: Contact(), isNew: true) { _ in })
     }
 }

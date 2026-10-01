@@ -316,17 +316,22 @@ struct DNSWizard: View {
     @ViewState private var embed = true
     @ViewState private var address: String?
     @ViewState private var domain = ""
-    @ViewState private var ports = "22"
+    @ViewState private var ports = ""
     @ViewState private var allow: Set<String> = []
     @ViewState private var sshKeys = ""
     @ViewState private var useSSH = false
     @ViewState private var busy = false
     @ViewState private var error: String?
 
+    /// `address` skips step 1 (snapshots).
+    init(address: String? = nil) {
+        _address = State(initialValue: address)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("DNS 发布向导").font(.headline)
-            Text("把服务端地址写进 DNS TXT 记录后，对方可以直接用域名连接（tailcat forward 域名 22）。地址因此变成公开信息，所以必须限制可连接的客户端。")
+            Text("把服务端地址写进 DNS TXT 记录后，对方可以直接用域名连接（如 tailcat ssh 域名）。地址因此变成公开信息，所以必须限制可连接的客户端。")
                 .font(.caption).foregroundStyle(.secondary)
             Form {
                 Section("1. 生成固定区域的 key") {
@@ -347,6 +352,8 @@ struct DNSWizard: View {
                     Section("3. 创建受限的服务") {
                         TextField(text: $ports, prompt: Text("22 8080")) { Text("端口 / 服务").font(.body) }
                             .font(.body.monospaced())
+                        Text("端口和其他服务只对允许列表里的客户端开放；不勾选任何人时，只能开启下面的 SSH。")
+                            .font(.caption).foregroundStyle(.secondary)
                         ForEach(manager.contacts) { c in
                             Toggle(c.name, isOn: Binding(
                                 get: { allow.contains(c.publicKey) },
@@ -357,7 +364,7 @@ struct DNSWizard: View {
                         }
                         Toggle("开启 SSH（用授权公钥认证）", isOn: $useSSH)
                         if useSSH {
-                            TextField(text: $sshKeys, prompt: Text("github:alice / ~/.ssh/authorized_keys")) { Text("授权公钥来源").font(.body) }
+                            TextField(text: $sshKeys, prompt: Text("alice@github, ~/.ssh/authorized_keys")) { Text("授权公钥来源").font(.body) }
                                 .font(.body.monospaced())
                         }
                     }
@@ -408,6 +415,10 @@ struct DNSWizard: View {
             sshAuthorizedKeys: useSSH ? sshKeys.trimmingCharacters(in: .whitespaces) : "")
         let issues = rule.validate()
         guard issues.isEmpty else { error = issues.map(\.description).joined(separator: "；"); return }
+        guard rule.authenticatesEveryClient else {
+            error = "未设置允许列表时只能开启 SSH：端口和其他服务会对所有读到 DNS 记录的人开放。"
+            return
+        }
         manager.add(rule)
         dismiss()
     }
