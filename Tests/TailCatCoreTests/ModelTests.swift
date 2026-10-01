@@ -508,19 +508,20 @@ func tempDir() -> URL {
         #expect(tracker.load().isEmpty)
     }
 
-    @Test func readsBarePidsFromVersion010() throws {
+    @Test func leavesBarePidsFromVersion010Alone() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let ours = try spawn("tailcat", in: dir.appendingPathComponent("a"))
-        let other = try spawn("sleep", in: dir.appendingPathComponent("b"))
-        defer { ours.terminate(); other.terminate() }
+        // A live process named tailcat at a recorded pid may be one the user started after ours died.
+        let unrelated = try spawn("tailcat", in: dir.appendingPathComponent("a"))
+        defer { unrelated.terminate() }
         let tracker = PIDTracker(directory: dir)
-        try Data(#"{"a":\#(ours.processIdentifier),"b":\#(other.processIdentifier)}"#.utf8).write(to: tracker.fileURL)
+        try Data(#"{"a":\#(unrelated.processIdentifier)}"#.utf8).write(to: tracker.fileURL)
 
-        #expect(tracker.load().mapValues(\.pid) == ["a": ours.processIdentifier])
-        tracker.reapOrphans()
-        ours.waitUntilExit()
-        #expect(ours.terminationReason == .uncaughtSignal)
-        #expect(other.isRunning)
+        #expect(tracker.load().isEmpty)
+        var signalled: [Int32] = []
+        tracker.reapOrphans(signal: { signalled.append($0) })
+        #expect(signalled.isEmpty)
+        #expect(unrelated.isRunning)
+        #expect(try Data(contentsOf: tracker.fileURL) == Data("{}".utf8))
     }
 }

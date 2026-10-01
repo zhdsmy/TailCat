@@ -36,13 +36,11 @@ public struct PIDTracker: Sendable {
     }
 
     public func load() -> [String: Identity] {
-        guard let data = SecureFile.read(fileURL) else { return [:] }
-        if let map = try? JSONDecoder().decode([String: Identity].self, from: data) { return map }
-        // 0.1.0 stored bare pids: only a process still named `tailcat` can be ours.
-        guard let old = try? JSONDecoder().decode([String: Int32].self, from: data) else { return [:] }
-        return old.compactMapValues { pid in
-            Identity.of(pid).flatMap { URL(fileURLWithPath: $0.path).lastPathComponent == "tailcat" ? $0 : nil }
-        }
+        // 0.1.0 stored bare pids, which cannot tell our child from a tailcat the user started after
+        // the pid was reused; they fail to decode and are dropped rather than signalled.
+        guard let data = SecureFile.read(fileURL),
+              let map = try? JSONDecoder().decode([String: Identity].self, from: data) else { return [:] }
+        return map
     }
 
     public func save(_ map: [String: Identity]) {
