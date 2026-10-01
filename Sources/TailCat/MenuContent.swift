@@ -12,20 +12,11 @@ struct MenuContent: View {
             if manager.binaryPath == nil {
                 MissingTailcat(compact: true).padding(8)
             }
-            if manager.runners.isEmpty {
-                Text("还没有规则，点“管理…”新建").foregroundStyle(.secondary).padding(12)
+            ViewThatFits(in: .vertical) {
+                rulesContent.fixedSize(horizontal: false, vertical: true)
+                ScrollView { rulesContent }
             }
-            ForEach(TunnelKind.displayOrder, id: \.self) { kind in
-                let runners = manager.runners.filter { $0.rule.kind == kind }
-                if !runners.isEmpty {
-                    Label(kind.label, systemImage: kind.systemImage)
-                        .font(.caption).foregroundStyle(.secondary)
-                        .padding(.horizontal, 12).padding(.top, 8)
-                    ForEach(runners) { runner in
-                        MenuRow(runner: runner) { show(.rule(runner.id)) }
-                    }
-                }
-            }
+            .frame(maxHeight: 480)
             Divider().padding(.vertical, 4)
             VStack(spacing: 8) {
                 HStack {
@@ -62,6 +53,25 @@ struct MenuContent: View {
         .frame(width: 320)
     }
 
+    private var rulesContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if manager.runners.isEmpty {
+                Text("还没有规则，点“管理…”新建").foregroundStyle(.secondary).padding(12)
+            }
+            ForEach(TunnelKind.displayOrder, id: \.self) { kind in
+                let runners = manager.runners.filter { $0.rule.kind == kind }
+                if !runners.isEmpty {
+                    Label(kind.label, systemImage: kind.systemImage)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .padding(.horizontal, 12).padding(.top, 8)
+                    ForEach(runners) { runner in
+                        MenuRow(runner: runner) { show(.rule(runner.id)) }
+                    }
+                }
+            }
+        }
+    }
+
     private func show(_ item: SidebarItem?) {
         if let item { navigation.selection = item }
         openWindow(id: "manage")
@@ -96,6 +106,7 @@ private struct MenuRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Button(runner.rule.name, action: onOpen).buttonStyle(.plain).lineLimit(1)
+                        .help(runner.rule.name)
                     if let ping = runner.lastPing { PingLabel(ping: ping) }
                     if runner.rule.needsAllowWarning {
                         Image(systemName: "exclamationmark.shield").foregroundStyle(.red).font(.caption)
@@ -137,6 +148,7 @@ private struct MenuRow: View {
             }
         default:
             Text(runner.state.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .help(runner.state.label)
         }
     }
 }

@@ -42,11 +42,13 @@ struct RuleEditor: View {
 
     init(rule: TunnelRule, isNew: Bool, contacts: [Contact], saveError: String? = nil,
          importError: String? = nil, mappingExamplesExpanded: Bool = false,
+         issues: [RuleIssue] = [],
          onSave: @escaping (TunnelRule) -> Bool) {
         _rule = State(initialValue: rule)
         _saveError = State(initialValue: saveError)
         _importError = State(initialValue: importError)
         _mappingExamplesExpanded = State(initialValue: mappingExamplesExpanded)
+        _issues = State(initialValue: issues)
         self.isNew = isNew
         self.onSave = onSave
         let dest: Destination
@@ -86,16 +88,28 @@ struct RuleEditor: View {
             .formStyle(.grouped)
             .frame(minHeight: 360, idealHeight: rule.kind == .serve ? 600 : 420)
             if !issues.isEmpty {
-                VStack(alignment: .leading) {
-                    ForEach(issues.map(\.description), id: \.self) { Text($0).foregroundStyle(.red).font(.caption) }
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(issues.map(\.description), id: \.self) {
+                        Text($0).foregroundStyle(.red).font(.caption)
+                    }
                 }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let saveError { Text(Diagnostics.mask(saveError)).foregroundStyle(.red).font(.caption) }
+            if let saveError {
+                Text(Diagnostics.mask(saveError)).foregroundStyle(.red).font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let importError {
+                Text(Diagnostics.mask(importError)).foregroundStyle(.red).font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             HStack {
                 if isNew && rule.kind == .forward {
                     Button("从剪贴板导入") { importClipboard() }
                 }
-                if let importError { Text(Diagnostics.mask(importError)).font(.caption).foregroundStyle(.red) }
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") { save(confirmed: false) }.keyboardShortcut(.defaultAction)
@@ -223,7 +237,7 @@ struct RuleEditor: View {
                 .disabled(item.name == "perf" && !manager.capabilities.perf && !namedServices.contains("perf"))
             }
             if !manager.capabilities.perf {
-                Text("perf 测速服务需要比 v0.7.0 更新的 tailcat（brew upgrade tailcat）。")
+                Text("当前命令行版本不含测速功能。安装支持此功能的版本后重新检测。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if namedServices.contains("ssh") || !rule.sshAuthorizedKeys.isEmpty {
@@ -231,6 +245,7 @@ struct RuleEditor: View {
                     .font(.body.monospaced())
                 Text("authorized_keys 文件路径、一行公钥，或 用户名@github（取自 github.com/用户名.keys），多个用逗号分隔")
                     .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         Section("共享目录") {
@@ -239,6 +254,7 @@ struct RuleEditor: View {
                 HStack {
                     Text(rule.filesDir.isEmpty ? "未选择" : rule.filesDir)
                         .font(.body.monospaced()).lineLimit(1).truncationMode(.middle)
+                        .help(rule.filesDir)
                     Spacer()
                     Button("选择…") {
                         if let url = Panels.chooseDirectory(message: "选择要共享的目录") { rule.filesDir = url.path }
@@ -286,6 +302,7 @@ struct RuleEditor: View {
             HStack {
                 Text(rule.recvDir.isEmpty ? "未选择目录" : rule.recvDir)
                     .font(.body.monospaced()).lineLimit(1).truncationMode(.middle)
+                    .help(rule.recvDir)
                 Spacer()
                 Button("选择…") {
                     if let url = Panels.chooseDirectory(message: "选择接收文件的目录") { rule.recvDir = url.path }
