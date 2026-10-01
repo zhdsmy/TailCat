@@ -49,7 +49,7 @@ public final class RuleManager: ObservableObject {
     private let locator: BinaryLocator
     private var runnerObservers: [UUID: [AnyCancellable]] = [:]
     private var watchers: [UUID: DirectoryWatcher] = [:]
-    private var livePIDs: [String: Int32] = [:]
+    private var livePIDs: [String: PIDTracker.Identity] = [:]
     private let events = SystemEvents()
 
     public init(
@@ -90,16 +90,15 @@ public final class RuleManager: ObservableObject {
         contacts = load(contactStore.load)
         keyMetas = load(keyMetaStore.load)
         let loaded = load(store.load)
-        let migrated = RemoteMigration.migrate(rules: loaded, remotes: remotes)
-        remotes = migrated.remotes
-        remoteDirectory.set(remotes)
-        for rule in migrated.rules { attach(rule) }
-        if migrated.changed {
-            // Remotes first: if we die in between, addresses are duplicated rather than lost.
-            persistRemotes()
-            persist()
-        }
         if !errors.isEmpty { loadError = errors.joined(separator: "\n") }
+        let migrated = RemoteMigration.migrate(rules: loaded, remotes: remotes)
+        // Migrated rules no longer hold their addresses, so they are adopted (and saved) only once
+        // the remotes holding them are on disk; otherwise the inline rules keep working as they are.
+        let adopted = migrated.changed && persist(migrated.remotes, to: remoteStore)
+        if adopted { remotes = migrated.remotes }
+        remoteDirectory.set(remotes)
+        for rule in adopted ? migrated.rules : loaded { attach(rule) }
+        if adopted { persist() }
 
         for runner in runners where runner.rule.autoStart { runner.start() }
         events.start { [weak self] reason in self?.restartActive(reason: reason) }
@@ -277,9 +276,10 @@ public final class RuleManager: ObservableObject {
         let result = RemoteMigration.migrate(rules: [rule], remotes: remotes)
         guard result.changed else { return rule }
         if result.remotes.count != remotes.count {
+            // The migrated rule drops its inline address; keep it unless the new remote is saved.
+            guard persist(result.remotes, to: remoteStore) else { return rule }
             remotes = result.remotes
             remoteDirectory.set(remotes)
-            persistRemotes()
         }
         return result.rules[0]
     }
@@ -332,7 +332,7 @@ public final class RuleManager: ObservableObject {
     }
 
     private func trackPID(id: UUID, pid: Int32?) {
-        livePIDs[id.uuidString] = pid
+        livePIDs[id.uuidString] = pid.flatMap(PIDTracker.Identity.of)
         pids.save(livePIDs)
     }
 
@@ -344,7 +344,11 @@ public final class RuleManager: ObservableObject {
         persist(remotes, to: remoteStore)
     }
 
-    private func persist<T: Codable>(_ items: [T], to store: ListStore<T>) {
-        do { try store.save(items) } catch { loadError = "保存失败：\(error.localizedDescription)" }
+    @discardableResult
+    private func persist<T: Codable>(_ items: [T], to store: ListStore<T>) -> Bool {
+        do { try store.save(items); return true } catch {
+            loadError = "保存失败：\(error.localizedDescription)"
+            return false
+        }
     }
 }

@@ -108,9 +108,9 @@ private func isFailed(_ state: RunState) -> Bool {
         let runner = TunnelRunner(rule: forwardRule(health: true), config: shConfig("\(listenerLine); exec sleep 30"))
         runner.start()
         #expect(await waitUntil { runner.state == .running })
+        #expect(await waitUntil { runner.lastPing == healthyPing })
         try? await Task.sleep(nanoseconds: 400_000_000)
         #expect(runner.state == .running)
-        #expect(runner.lastPing == healthyPing)
         runner.stop()
     }
 
@@ -218,6 +218,20 @@ private func isFailed(_ state: RunState) -> Bool {
         #expect(Date().timeIntervalSince(started) < 5)
     }
 
+    @Test func cancelledBeforeLaunchNeverRuns() async {
+        let marker = tempDir()
+        defer { try? FileManager.default.removeItem(at: marker) }
+        let task = Task {
+            try? await Task.sleep(nanoseconds: 50_000_000)   // ends early once cancelled
+            return await ProcessRunner.run(executable: URL(fileURLWithPath: "/bin/sh"),
+                                           arguments: ["-c", "touch '\(marker.path)'"], hardTimeout: 5)
+        }
+        task.cancel()
+        #expect(await task.value.status == nil)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+    }
+
     @Test func errorSummaryIsLastStderrLine() {
         #expect(ProcessOutput(status: 1, stdout: "", stderr: "usage\n\nboom\n").errorSummary == "boom")
         #expect(ProcessOutput(status: 3, stdout: "", stderr: "").errorSummary == "退出码 3")
@@ -306,24 +320,29 @@ private func fakeTailcat() throws -> (URL, TailcatCLI) {
                            makeConfig: { _ in shConfig(script: script) })
     }
 
-    @Test func bootstrapMigratesInlineAddressesIntoRemotes() throws {
+    @Test func failedRemoteSaveKeepsInlineAddresses() throws {
         let dir = tempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try RuleStore(directory: dir).save([TunnelRule(name: "web", address: "tcWEB", key: "k", mappings: ["80"])])
+        let remotesFile = dir.appendingPathComponent("remotes.json")
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: remotesFile.path)
+            try? FileManager.default.removeItem(at: dir)
+        }
+        try RuleStore(directory: dir).save([TunnelRule(name: "web", address: "tcWEB", mappings: ["80"])])
+        // A locked (uchg) remotes.json reads fine but cannot be replaced.
+        try ListStore<Remote>(fileURL: remotesFile).save([])
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: remotesFile.path)
 
         let m = manager(dir: dir) { _ in "exit 0" }
         m.bootstrap()
         defer { m.shutdown() }
-        #expect(m.remotes.count == 1)
-        #expect(m.remotes[0].address == "tcWEB" && m.remotes[0].key == "k")
-        #expect(m.rules[0].remoteID == m.remotes[0].id && m.rules[0].address.isEmpty)
-        #expect(m.remoteDirectory.remote(id: m.remotes[0].id) == m.remotes[0])
+        #expect(m.loadError?.contains("保存失败") == true)
+        #expect(m.remotes.isEmpty)
+        #expect(m.rules[0].address == "tcWEB" && m.rules[0].remoteID == nil)
+        #expect(try RuleStore(directory: dir).load()[0].address == "tcWEB")
 
-        let saved = try RuleStore(directory: dir).load()
-        #expect(saved[0].address.isEmpty)
-        let remotes = try ListStore<Remote>(fileURL: dir.appendingPathComponent("remotes.json")).load()
-        #expect(remotes == m.remotes)
-        #expect(!m.removeRemote(id: remotes[0].id))
+        m.add(TunnelRule(name: "db", address: "tcDB", mappings: ["5432"]))
+        #expect(m.rules[1].address == "tcDB" && m.rules[1].remoteID == nil)
+        #expect(try RuleStore(directory: dir).load().map(\.address) == ["tcWEB", "tcDB"])
     }
 
     @Test func wakeRestartsOnlyClientRules() async {

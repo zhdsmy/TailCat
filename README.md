@@ -95,7 +95,7 @@ App 为 ad-hoc 签名、仅菜单栏（`LSUIElement`），没有 Dock 图标；A
 | `remotes.json` | 远端地址簿（地址、客户端 key、SSH 用户） |
 | `contacts.json` | 通讯录（名字 → nodekey） |
 | `key-meta.json` | key 的角色、地址、公钥、区域缓存（不含私钥） |
-| `pids.json` | 子进程 pid，崩溃后用于清理孤儿进程 |
+| `pids.json` | 子进程 pid、可执行文件路径与启动时间，崩溃后用于清理孤儿进程（pid 被其他进程复用时不会误杀） |
 
 偏好设置存在 UserDefaults（domain `io.github.zhdsmy.TailCat`；`customBinaryPath`、`derpmapURL`、`verbose`、`notificationsEnabled`、`statusLoopEnabled`）。
 

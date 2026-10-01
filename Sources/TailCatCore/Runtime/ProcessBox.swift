@@ -5,6 +5,7 @@ final class ProcessBox: @unchecked Sendable {
     private let lock = NSLock()
     private let process: Process
     private var unhealthy = false
+    private var killed = false
 
     init(_ process: Process) {
         self.process = process
@@ -39,8 +40,17 @@ final class ProcessBox: @unchecked Sendable {
         }
     }
 
+    /// Launches unless `kill()` came first: a task cancelled before launch has already run its
+    /// cancellation handler, so nothing would stop the command afterwards.
+    func run() throws {
+        lock.lock(); defer { lock.unlock() }
+        if killed { throw CancellationError() }
+        try process.run()
+    }
+
     func kill() {
         lock.lock(); defer { lock.unlock() }
+        killed = true
         guard process.isRunning else { return }
         Foundation.kill(process.processIdentifier, SIGKILL)
     }
@@ -185,7 +195,7 @@ enum ProcessRunner {
             await withCheckedContinuation { (continuation: CheckedContinuation<Int32?, Never>) in
                 process.terminationHandler = { continuation.resume(returning: $0.terminationStatus) }
                 do {
-                    try process.run()
+                    try box.run()
                 } catch {
                     process.terminationHandler = nil
                     continuation.resume(returning: nil)

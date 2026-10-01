@@ -440,15 +440,62 @@ func tempDir() -> URL {
 }
 
 @Suite struct PIDTrackerTests {
-    @Test func reapsOnlyProcessesThatLookLikeTailcat() throws {
+    /// A real child process whose executable is named `name`. Copies of system binaries get
+    /// SIGKILLed by launch constraints, so a trivial one is compiled instead.
+    private func spawn(_ name: String, in dir: URL) throws -> Process {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let exe = dir.appendingPathComponent(name)
+        let cc = Process()
+        cc.executableURL = URL(fileURLWithPath: "/usr/bin/cc")
+        cc.arguments = ["-x", "c", "-", "-o", exe.path]
+        let source = Pipe()
+        cc.standardInput = source
+        try cc.run()
+        try source.fileHandleForWriting.write(contentsOf: Data("#include <unistd.h>\nint main(void) { for (;;) pause(); }\n".utf8))
+        try source.fileHandleForWriting.close()
+        cc.waitUntilExit()
+        try #require(cc.terminationStatus == 0)
+        let p = Process()
+        p.executableURL = exe
+        try p.run()
+        return p
+    }
+
+    @Test func reapsOwnChildUnderAnyNameButNotAReusedPid() throws {
         let dir = tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
+        let child = try spawn("tailcat-dev", in: dir)
+        defer { child.terminate() }
         let tracker = PIDTracker(directory: dir)
-        tracker.save(["a": 111, "b": 222])
-        nonisolated(unsafe) var signalled: [Int32] = []
-        // Real kill() is avoided by only "reaping" pids the predicate rejects.
-        tracker.reapOrphans(isTailcat: { signalled.append($0); return false })
-        #expect(Set(signalled) == [111, 222])
+        let id = try #require(PIDTracker.Identity.of(child.processIdentifier))
+        #expect(id.path.hasSuffix("/tailcat-dev"))
+
+        var reused = id
+        reused.started -= 1
+        tracker.save(["r": reused])
+        tracker.reapOrphans()
+        #expect(child.isRunning)
+
+        tracker.save(["r": id])
+        tracker.reapOrphans()
+        child.waitUntilExit()
+        #expect(child.terminationReason == .uncaughtSignal && child.terminationStatus == SIGTERM)
         #expect(tracker.load().isEmpty)
+    }
+
+    @Test func readsBarePidsFromVersion010() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ours = try spawn("tailcat", in: dir.appendingPathComponent("a"))
+        let other = try spawn("sleep", in: dir.appendingPathComponent("b"))
+        defer { ours.terminate(); other.terminate() }
+        let tracker = PIDTracker(directory: dir)
+        try Data(#"{"a":\#(ours.processIdentifier),"b":\#(other.processIdentifier)}"#.utf8).write(to: tracker.fileURL)
+
+        #expect(tracker.load().mapValues(\.pid) == ["a": ours.processIdentifier])
+        tracker.reapOrphans()
+        ours.waitUntilExit()
+        #expect(ours.terminationReason == .uncaughtSignal)
+        #expect(other.isRunning)
     }
 }
