@@ -419,7 +419,7 @@ struct DNSWizard: View {
             error = "未设置允许列表时只能开启 SSH：端口和其他服务会对所有读到 DNS 记录的人开放。"
             return
         }
-        manager.add(rule)
+        guard manager.add(rule) else { error = manager.loadError ?? "保存失败，请重试。"; return }
         dismiss()
     }
 }

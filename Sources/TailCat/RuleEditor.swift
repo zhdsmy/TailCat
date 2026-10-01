@@ -25,7 +25,7 @@ struct RuleEditor: View {
     @Environment(\.dismiss) private var dismiss
     @ViewState private var rule: TunnelRule
     let isNew: Bool
-    let onSave: (TunnelRule) -> Void
+    let onSave: (TunnelRule) -> Bool
 
     @ViewState private var destination: Destination
     @ViewState private var listText: String
@@ -37,9 +37,13 @@ struct RuleEditor: View {
     @ViewState private var issues: [RuleIssue] = []
     @ViewState private var confirmRisk = false
     @ViewState private var importError: String?
+    @ViewState private var saveError: String?
 
-    init(rule: TunnelRule, isNew: Bool, contacts: [Contact], onSave: @escaping (TunnelRule) -> Void) {
+    init(rule: TunnelRule, isNew: Bool, contacts: [Contact], saveError: String? = nil,
+         importError: String? = nil, onSave: @escaping (TunnelRule) -> Bool) {
         _rule = State(initialValue: rule)
+        _saveError = State(initialValue: saveError)
+        _importError = State(initialValue: importError)
         self.isNew = isNew
         self.onSave = onSave
         let dest: Destination
@@ -83,11 +87,12 @@ struct RuleEditor: View {
                     ForEach(issues.map(\.description), id: \.self) { Text($0).foregroundStyle(.red).font(.caption) }
                 }
             }
+            if let saveError { Text(Diagnostics.mask(saveError)).foregroundStyle(.red).font(.caption) }
             HStack {
                 if isNew && rule.kind == .forward {
                     Button("从剪贴板导入") { importClipboard() }
                 }
-                if let importError { Text(importError).font(.caption).foregroundStyle(.red) }
+                if let importError { Text(Diagnostics.mask(importError)).font(.caption).foregroundStyle(.red) }
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") { save(confirmed: false) }.keyboardShortcut(.defaultAction)
@@ -282,21 +287,17 @@ struct RuleEditor: View {
     // MARK: Actions
 
     private func importClipboard() {
-        guard let clip = Clipboard.string, let imported = AddressTools.importForward(clip) else {
-            importError = "剪贴板里没有可识别的 tc 地址或 forward 命令"
-            return
+        switch AddressTools.parseForward(Clipboard.string ?? "") {
+        case .failure(let error): importError = error.localizedDescription
+        case .success(let imported):
+            // listText is the live mapping draft; bare-address imports keep it.
+            rule.mappings = lines(listText)
+            let remoteID = imported.apply(to: &rule, remotes: manager.remotes)
+            destination = remoteID.map(Destination.remote) ?? .inline
+            listText = rule.mappings.joined(separator: "\n")
+            importError = nil
+            if rule.name.isEmpty { rule.name = "未命名" }
         }
-        importError = nil
-        if let existing = manager.remotes.first(where: { $0.address == imported.address && $0.key == (imported.key ?? "") }) {
-            destination = .remote(existing.id)
-        } else {
-            destination = .inline
-            rule.address = imported.address
-            if let key = imported.key { rule.key = key }
-        }
-        if !imported.mappings.isEmpty { listText = imported.mappings.joined(separator: "\n") }
-        if let bind = imported.bind { rule.bind = bind }
-        if rule.name.isEmpty { rule.name = "未命名" }
     }
 
     private func lines(_ text: String) -> [String] {
@@ -333,6 +334,7 @@ struct RuleEditor: View {
     }
 
     private func save(confirmed: Bool) {
+        saveError = nil
         let c = candidate()
         issues = c.validate()
         guard issues.isEmpty else { return }
@@ -340,7 +342,10 @@ struct RuleEditor: View {
             confirmRisk = true
             return
         }
-        onSave(c)
+        guard onSave(c) else {
+            saveError = manager.loadError ?? "保存失败，请重试。"
+            return
+        }
         dismiss()
     }
 }

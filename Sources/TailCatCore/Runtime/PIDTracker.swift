@@ -38,7 +38,7 @@ public struct PIDTracker: Sendable {
     public func load() -> [String: Identity] {
         // 0.1.0 stored bare pids, which cannot tell our child from a tailcat the user started after
         // the pid was reused; they fail to decode and are dropped rather than signalled.
-        guard let data = SecureFile.read(fileURL),
+        guard let data = try? SecureFile.read(fileURL),
               let map = try? JSONDecoder().decode([String: Identity].self, from: data) else { return [:] }
         return map
     }

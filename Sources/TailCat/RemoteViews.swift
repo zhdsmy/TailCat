@@ -12,6 +12,7 @@ struct RemoteDetail: View {
     let onDeleted: () -> Void
     let onNewRule: (TunnelKind) -> Void
     let onShowRule: (UUID) -> Void
+    let onBrowse: () -> Void
 
     @ViewState private var directTimedOut = false
     @ViewState private var sshPort = ""
@@ -21,12 +22,13 @@ struct RemoteDetail: View {
 
     init(remote: Remote, onEdit: @escaping () -> Void, onDeleted: @escaping () -> Void,
          onNewRule: @escaping (TunnelKind) -> Void, onShowRule: @escaping (UUID) -> Void,
-         deleteError: String? = nil) {
+         onBrowse: @escaping () -> Void = {}, deleteError: String? = nil) {
         self.remote = remote
         self.onEdit = onEdit
         self.onDeleted = onDeleted
         self.onNewRule = onNewRule
         self.onShowRule = onShowRule
+        self.onBrowse = onBrowse
         _deleteError = State(initialValue: deleteError)
     }
 
@@ -69,6 +71,7 @@ struct RemoteDetail: View {
                 Image(systemName: "desktopcomputer")
                 Text(remote.name).font(.title2)
                 Spacer()
+                Button("打开网页", action: onBrowse)
                 Button("编辑", action: onEdit)
                 let inUse = !manager.rules(usingRemote: remote.id).isEmpty
                 Button("删除", role: .destructive) { confirmDelete = true }
@@ -210,6 +213,7 @@ struct FileBrowser: View {
     @ViewState private var transfer: String?
     @ViewState private var transferTask: Task<Void, Never>?
     @ViewState private var dropTargeted = false
+    @ViewState private var preserveFileMetadata = false
 
     var body: some View {
         GroupBox("文件") {
@@ -223,6 +227,8 @@ struct FileBrowser: View {
                     Button("发送文件…") { upload(Panels.chooseFiles(message: "选择要发送到远端的文件或目录")) }
                         .disabled(transferTask != nil)
                 }
+                Toggle("保留修改时间和权限", isOn: $preserveFileMetadata)
+                    .disabled(transferTask != nil)
                 if loading { ProgressView().controlSize(.small) }
                 if let error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                 if let transfer {
@@ -284,9 +290,10 @@ struct FileBrowser: View {
     private func upload(_ urls: [URL]) {
         guard !urls.isEmpty, transferTask == nil else { return }
         let target = entries == nil ? "" : path
+        let preserve = preserveFileMetadata
         transfer = "正在发送 \(urls.count) 项…"
         transferTask = Task {
-            let result = await manager.cli.upload(identity, files: urls, remotePath: target)
+            let result = await manager.cli.upload(identity, files: urls, remotePath: target, preserve: preserve)
             switch result {
             case .success: transfer = "已发送 \(urls.count) 项"
             case .failure(let e): transfer = Task.isCancelled ? "已取消" : "发送失败：\(e.message)"
@@ -298,10 +305,11 @@ struct FileBrowser: View {
 
     private func download(_ entry: RemoteFileEntry) {
         guard let dir = Panels.chooseDirectory(message: "下载 \(entry.name) 到…", prompt: "下载") else { return }
+        let preserve = preserveFileMetadata
         transfer = "正在下载 \(entry.name)…"
         transferTask = Task {
             let result = await manager.cli.download(identity, remotePath: FileListing.join(path, entry.name),
-                                                    isDirectory: entry.isDirectory, to: dir)
+                                                    isDirectory: entry.isDirectory, to: dir, preserve: preserve)
             switch result {
             case .success: transfer = "已下载到 \(dir.path)"
             case .failure(let e): transfer = Task.isCancelled ? "已取消" : "下载失败：\(e.message)"
@@ -505,9 +513,10 @@ struct RemoteEditor: View {
             HStack {
                 if isNew {
                     Button("从剪贴板粘贴地址") {
-                        if let clip = Clipboard.string, let imported = AddressTools.importForward(clip) {
-                            remote.address = imported.address
-                            if let key = imported.key { remote.key = key }
+                        saveError = nil
+                        switch AddressTools.parseForward(Clipboard.string ?? "") {
+                        case .success(let imported): imported.apply(to: &remote)
+                        case .failure(let error): saveError = error.localizedDescription
                         }
                     }
                 }

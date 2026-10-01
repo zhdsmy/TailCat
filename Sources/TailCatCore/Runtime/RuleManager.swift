@@ -50,6 +50,7 @@ public final class RuleManager: ObservableObject {
     private var runnerObservers: [UUID: [AnyCancellable]] = [:]
     private var watchers: [UUID: DirectoryWatcher] = [:]
     private var livePIDs: [String: PIDTracker.Identity] = [:]
+    private var storeErrors: [URL: String] = [:]
 
     public init(
         store: RuleStore = RuleStore(directory: RuleStore.defaultDirectory()),
@@ -81,23 +82,21 @@ public final class RuleManager: ObservableObject {
     public func bootstrap() {
         pids.reapOrphans()
         refreshBinary()
-        var errors: [String] = []
-        func load<T>(_ what: () throws -> [T]) -> [T] {
-            do { return try what() } catch { errors.append(error.localizedDescription); return [] }
+        func load<T>(_ what: () throws -> [T], from url: URL) -> [T] {
+            do { return try what() } catch { setStoreError(error.localizedDescription, for: url); return [] }
         }
-        remotes = load(remoteStore.load)
-        contacts = load(contactStore.load)
-        keyMetas = load(keyMetaStore.load)
-        let loaded = load(store.load)
-        if !errors.isEmpty { loadError = errors.joined(separator: "\n") }
+        remotes = load(remoteStore.load, from: remoteStore.fileURL)
+        contacts = load(contactStore.load, from: contactStore.fileURL)
+        keyMetas = load(keyMetaStore.load, from: keyMetaStore.fileURL)
+        let loaded = load(store.load, from: store.fileURL)
         let migrated = RemoteMigration.migrate(rules: loaded, remotes: remotes)
         // Migrated rules no longer hold their addresses, so they are adopted (and saved) only once
         // the remotes holding them are on disk; otherwise the inline rules keep working as they are.
         let adopted = migrated.changed && persist(migrated.remotes, to: remoteStore)
         if adopted { remotes = migrated.remotes }
         remoteDirectory.set(remotes)
-        for rule in adopted ? migrated.rules : loaded { attach(rule) }
-        if adopted { persist() }
+        let rules = adopted && persist(migrated.rules) ? migrated.rules : loaded
+        for rule in rules { attach(rule) }
 
         for runner in runners where runner.rule.autoStart { runner.start() }
         Task { await refreshTailcatInfo() }
@@ -129,26 +128,49 @@ public final class RuleManager: ObservableObject {
 
     // MARK: Rules
 
-    public func add(_ rule: TunnelRule) {
-        attach(adoptInlineRemote(rule))
-        persist()
+    @discardableResult
+    public func add(_ rule: TunnelRule) -> Bool {
+        let candidate = adoptInlineRemote(rule)
+        guard persist(rules + [candidate]) else { return false }
+        attach(candidate)
+        return true
     }
 
-    public func update(_ rule: TunnelRule) {
-        runner(id: rule.id)?.update(rule: adoptInlineRemote(rule))
-        persist()
+    @discardableResult
+    public func update(_ rule: TunnelRule) -> Bool {
+        guard let runner = runner(id: rule.id) else { return false }
+        let candidate = adoptInlineRemote(rule)
+        guard persist(rules.map { $0.id == rule.id ? candidate : $0 }) else { return false }
+        runner.update(rule: candidate)
         objectWillChange.send()
+        return true
     }
 
-    public func remove(id: UUID) {
-        guard let runner = runner(id: id) else { return }
+    @discardableResult
+    public func remove(id: UUID) -> Bool {
+        guard let runner = runner(id: id), persist(rules.filter { $0.id != id }) else { return false }
         runner.stop()
         runnerObservers[id] = nil
         watchers.removeValue(forKey: id)?.stop()
         inbox[id] = nil
         runners.removeAll { $0.id == id }
-        persist()
+        return true
     }
+
+    /// Reuse the same supervised web forward on repeated clicks; the UI opens an existing
+    /// listener or starts the rule, whose --open-browser opens the page once it is ready.
+    public func websiteRule(for remoteID: UUID) -> TunnelRunner? {
+        guard let remote = remote(id: remoteID) else { return nil }
+        if let runner = runners.first(where: {
+            $0.rule.kind == .forward && $0.rule.remoteID == remoteID && $0.rule.bind == "127.0.0.1"
+                && $0.rule.cleanedMappings == ["0:80"] && $0.rule.openBrowser
+        }) { return runner }
+        let rule = TunnelRule(name: "\(remote.name) · 网页", remoteID: remoteID,
+                              mappings: ["0:80"], openBrowser: true)
+        return add(rule) ? runner(id: rule.id) : nil
+    }
+
+    public func dismissError() { storeErrors.removeAll(); loadError = nil }
 
     public func toggle(id: UUID) {
         guard let runner = runner(id: id) else { return }
@@ -228,18 +250,25 @@ public final class RuleManager: ObservableObject {
 
     // MARK: Contacts
 
-    public func saveContact(_ contact: Contact) {
-        if let i = contacts.firstIndex(where: { $0.id == contact.id }) {
-            contacts[i] = contact
+    @discardableResult
+    public func saveContact(_ contact: Contact) -> Bool {
+        var updated = contacts
+        if let i = updated.firstIndex(where: { $0.id == contact.id }) {
+            updated[i] = contact
         } else {
-            contacts.append(contact)
+            updated.append(contact)
         }
-        persist(contacts, to: contactStore)
+        guard persist(updated, to: contactStore) else { return false }
+        contacts = updated
+        return true
     }
 
-    public func removeContact(id: UUID) {
-        contacts.removeAll { $0.id == id }
-        persist(contacts, to: contactStore)
+    @discardableResult
+    public func removeContact(id: UUID) -> Bool {
+        let updated = contacts.filter { $0.id != id }
+        guard persist(updated, to: contactStore) else { return false }
+        contacts = updated
+        return true
     }
 
     public func contactName(forPublicKey key: String) -> String? {
@@ -261,15 +290,13 @@ public final class RuleManager: ObservableObject {
             merged.publicKey = meta.publicKey ?? old.publicKey
             merged.region = meta.region ?? old.region
         }
-        keyMetas.removeAll { $0.name == meta.name }
-        keyMetas.append(merged)
-        keyMetas.sort { $0.name < $1.name }
-        persist(keyMetas, to: keyMetaStore)
+        let updated = (keyMetas.filter { $0.name != meta.name } + [merged]).sorted { $0.name < $1.name }
+        if persist(updated, to: keyMetaStore) { keyMetas = updated }
     }
 
     public func forgetKey(name: String) {
-        keyMetas.removeAll { $0.name == name }
-        persist(keyMetas, to: keyMetaStore)
+        let updated = keyMetas.filter { $0.name != name }
+        if persist(updated, to: keyMetaStore) { keyMetas = updated }
     }
 
     // MARK: Private
@@ -280,6 +307,8 @@ public final class RuleManager: ObservableObject {
         guard result.changed else { return rule }
         if result.remotes.count != remotes.count {
             // The migrated rule drops its inline address; keep it unless the new remote is saved.
+            // ponytail: separate files can leave an unused saved remote if the rule write fails;
+            // retries reuse it. Keep the credentials recoverable instead of adding rollback writes.
             guard persist(result.remotes, to: remoteStore) else { return rule }
             remotes = result.remotes
             remoteDirectory.set(remotes)
@@ -340,15 +369,26 @@ public final class RuleManager: ObservableObject {
         pids.save(livePIDs)
     }
 
-    private func persist() {
-        do { try store.save(rules) } catch { loadError = "保存失败：\(error.localizedDescription)" }
+    @discardableResult
+    private func persist(_ rules: [TunnelRule]) -> Bool {
+        do { try store.save(rules); setStoreError(nil, for: store.fileURL); return true } catch {
+            setStoreError("保存失败：\(error.localizedDescription)", for: store.fileURL)
+            return false
+        }
     }
 
     @discardableResult
     private func persist<T: Codable>(_ items: [T], to store: ListStore<T>) -> Bool {
-        do { try store.save(items); return true } catch {
-            loadError = "保存失败：\(error.localizedDescription)"
+        do { try store.save(items); setStoreError(nil, for: store.fileURL); return true } catch {
+            setStoreError("保存失败：\(error.localizedDescription)", for: store.fileURL)
             return false
         }
+    }
+
+    private func setStoreError(_ message: String?, for url: URL) {
+        storeErrors[url] = message.map { Diagnostics.mask("\(url.lastPathComponent)：\($0)") }
+        // A successful retry clears only this file's error, not an unrelated failed load.
+        loadError = storeErrors.isEmpty ? nil : storeErrors.sorted { $0.key.path < $1.key.path }
+            .map(\.value).joined(separator: "\n")
     }
 }

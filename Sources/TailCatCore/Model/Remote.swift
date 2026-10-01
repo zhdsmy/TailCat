@@ -10,7 +10,7 @@ public enum RemoteIssue: Error, Equatable, Sendable, CustomStringConvertible {
         switch self {
         case .emptyName: return "名称不能为空"
         case .invalidAddress: return "地址不能为空，不能含空白字符，也不能以 - 开头"
-        case .invalidKey: return "Key 不能以 - 开头，也不能含空白字符"
+        case .invalidKey: return "Key 名称不能含空白；路径可含空格。均不能以 - 开头或含换行、空字符"
         case .invalidUser: return "SSH 用户名只能包含字母、数字、. _ -，且不能以 - 开头"
         }
     }
@@ -49,7 +49,7 @@ public struct Remote: Codable, Identifiable, Equatable, Sendable {
         var issues: [RemoteIssue] = []
         if name.trimmingCharacters(in: .whitespaces).isEmpty { issues.append(.emptyName) }
         if !TunnelRule.isSafeToken(address) { issues.append(.invalidAddress) }
-        if !key.isEmpty && !TunnelRule.isSafeToken(key) { issues.append(.invalidKey) }
+        if !key.isEmpty && !TunnelRule.isSafeKey(key) { issues.append(.invalidKey) }
         if !sshUser.isEmpty && !Self.isValidUser(sshUser) { issues.append(.invalidUser) }
         return issues
     }
