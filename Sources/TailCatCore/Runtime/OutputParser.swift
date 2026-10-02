@@ -13,10 +13,10 @@ public struct ListenerInfo: Hashable, Sendable {
     /// Remote side for the UI: a port on the server itself (tailcat prints it as `localhost:<port>`),
     /// or another host reached through the server.
     public var targetLabel: String {
-        guard let cut = target.lastIndex(of: ":") else { return "远端 \(target)" }
+        guard let cut = target.lastIndex(of: ":") else { return L10n.tr("远端 %@", target) }
         let host = target[..<cut].trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        if ["localhost", "127.0.0.1", "::1"].contains(host) { return "远端 \(target[target.index(after: cut)...])" }
-        return "\(target)（经远端）"
+        if ["localhost", "127.0.0.1", "::1"].contains(host) { return L10n.tr("远端 %@", String(target[target.index(after: cut)...])) }
+        return L10n.tr("%@（经远端）", target)
     }
 }
 

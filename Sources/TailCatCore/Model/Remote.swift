@@ -8,10 +8,10 @@ public enum RemoteIssue: Error, Equatable, Sendable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .emptyName: return "名称不能为空"
-        case .invalidAddress: return "地址不能为空，不能含空白字符，也不能以 - 开头"
-        case .invalidKey: return "Key 名称不能含空白；路径可含空格。均不能以 - 开头或含换行、空字符"
-        case .invalidUser: return "SSH 用户名只能包含字母、数字、. _ -，且不能以 - 开头"
+        case .emptyName: return L10n.tr("名称不能为空")
+        case .invalidAddress: return L10n.tr("地址不能为空，不能含空白字符，也不能以 - 开头")
+        case .invalidKey: return L10n.tr("Key 名称不能含空白；路径可含空格。均不能以 - 开头或含换行、空字符")
+        case .invalidUser: return L10n.tr("SSH 用户名只能包含字母、数字、. _ -，且不能以 - 开头")
         }
     }
 }
@@ -79,7 +79,7 @@ public enum RemoteMigration {
             if let existing = remotes.first(where: { $0.address == address && $0.key == rule.key }) {
                 remote = existing
             } else {
-                remote = Remote(name: rule.name.isEmpty ? "远端 \(remotes.count + 1)" : rule.name,
+                remote = Remote(name: rule.name.isEmpty ? L10n.tr("远端 %@", String(remotes.count + 1)) : rule.name,
                                 address: address, key: rule.key)
                 remotes.append(remote)
             }

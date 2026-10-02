@@ -15,6 +15,7 @@ enum Entry {
            let legacy = UserDefaults(suiteName: AppSettings.legacySuiteName) {
             AppSettings.migrateLegacyDefaults(from: legacy, to: .standard)
         }
+        L10n.configure(AppSettings().language)
         TailCatApp.main()
     }
 }
@@ -81,9 +82,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             UNUserNotificationCenter.current().delegate = self
             manager.onNotify = { title, body in AppNotifications.post(title: title, body: body) }
             manager.onFilesReceived = { rule, urls in
-                let names = urls.prefix(3).map(\.lastPathComponent).joined(separator: "、")
-                let more = urls.count > 3 ? " 等 \(urls.count) 项" : ""
-                AppNotifications.post(title: rule.name, body: "收到 \(names)\(more)", reveal: urls.first)
+                let names = urls.prefix(3).map(\.lastPathComponent).joined(separator: L10n.tr("、"))
+                let body = urls.count > 3 ? L10n.tr("收到 %@ 等 %d 项", names, urls.count) : L10n.tr("收到 %@", names)
+                AppNotifications.post(title: rule.name, body: body, reveal: urls.first)
             }
             AppNotifications.requestAuthorizationIfNeeded()
             manager.bootstrap()

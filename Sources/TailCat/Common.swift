@@ -5,13 +5,13 @@ import TailCatCore
 extension RunState {
     var label: String {
         switch self {
-        case .stopped: return "已停止"
-        case .starting: return "启动中…"
-        case .running: return "已启动"
+        case .stopped: return L10n.tr("已停止")
+        case .starting: return L10n.tr("启动中…")
+        case .running: return L10n.tr("已启动")
         case .reconnecting(let attempt, let retryAt, _):
             let secs = max(0, Int(retryAt.timeIntervalSinceNow.rounded(.up)))
-            return "重连中（第 \(attempt) 次，\(secs)s 后）"
-        case .failed(let reason): return "失败：\(Diagnostics.mask(reason))"
+            return L10n.tr("重连中（第 %d 次，%ds 后）", attempt, secs)
+        case .failed(let reason): return L10n.tr("失败：%@", Diagnostics.mask(reason))
         }
     }
 
@@ -51,7 +51,7 @@ enum Clipboard {
 
 enum Panels {
     @MainActor
-    static func chooseDirectory(message: String, prompt: String = "选择") -> URL? {
+    static func chooseDirectory(message: String, prompt: String = L10n.tr("选择")) -> URL? {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -69,7 +69,7 @@ enum Panels {
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
         panel.message = message
-        panel.prompt = "发送"
+        panel.prompt = L10n.tr("发送")
         return panel.runModal() == .OK ? panel.urls : []
     }
 
@@ -102,14 +102,14 @@ struct CopyableText: View {
                 .lineLimit(lineLimit)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
-                .help(secret && !revealed ? "地址已隐藏；复制可获得完整内容" : text)
+                .help(secret && !revealed ? L10n.tr("地址已隐藏；复制可获得完整内容") : text)
             if secret && sharedReveal == nil {
                 Button { ownReveal.toggle() } label: { Image(systemName: ownReveal ? "eye.slash" : "eye") }
                     .buttonStyle(.borderless)
-                    .help(ownReveal ? "隐藏" : "显示完整内容")
-                    .accessibilityLabel(ownReveal ? "隐藏完整内容" : "显示完整内容")
+                    .help(ownReveal ? L10n.tr("隐藏") : L10n.tr("显示完整内容"))
+                    .accessibilityLabel(ownReveal ? L10n.tr("隐藏完整内容") : L10n.tr("显示完整内容"))
             }
-            CopyButton(text: text, label: copyLabel ?? (secret ? "复制完整内容" : "复制"))
+            CopyButton(text: text, label: copyLabel ?? (secret ? L10n.tr("复制完整内容") : L10n.tr("复制")))
                 .buttonStyle(.borderless)
         }
     }
@@ -117,7 +117,7 @@ struct CopyableText: View {
 
 struct CopyButton: View {
     let text: String
-    var label = "复制"
+    var label = L10n.tr("复制")
     var iconOnly = true
     @ViewState var copied = false
 
@@ -128,11 +128,11 @@ struct CopyButton: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                if copied || !iconOnly { Text(copied ? "已复制" : label) }
+                if copied || !iconOnly { Text(copied ? L10n.tr("已复制") : label) }
             }
         }
         .help(label)
-        .accessibilityLabel(copied ? "已复制" : label)
+        .accessibilityLabel(copied ? L10n.tr("已复制") : label)
         .fixedSize()
         .task(id: copied) {
             guard copied else { return }
@@ -150,19 +150,19 @@ struct MissingTailcat: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("未找到 tailcat", systemImage: "exclamationmark.triangle.fill")
+            Label(L10n.tr("未找到 tailcat"), systemImage: "exclamationmark.triangle.fill")
                 .font(compact ? .callout.weight(.semibold) : .headline).foregroundStyle(.red)
             if !compact {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("已安装 Homebrew 时，将下方命令复制到“终端”执行。")
-                    Text("完成后点“重新检测”；已有 tailcat 可在设置中指定路径。")
+                    Text(L10n.tr("已安装 Homebrew 时，将下方命令复制到“终端”执行。"))
+                    Text(L10n.tr("完成后点“重新检测”；已有 tailcat 可在设置中指定路径。"))
                 }
                 .font(.callout).foregroundStyle(.secondary)
             }
             HStack {
-                CopyableText(text: "brew install tailcat", font: .callout.monospaced(), copyLabel: "复制安装命令")
+                CopyableText(text: "brew install tailcat", font: .callout.monospaced(), copyLabel: L10n.tr("复制安装命令"))
                 Spacer()
-                Button("重新检测") { Task { await manager.refreshTailcatInfo() } }
+                Button(L10n.tr("重新检测")) { Task { await manager.refreshTailcatInfo() } }
             }
         }
         .padding(10)
@@ -183,10 +183,10 @@ struct Ago: View {
 
     static func format(_ date: Date) -> String {
         let s = max(0, Int(-date.timeIntervalSinceNow))
-        if s < 10 { return "刚刚" }
-        if s < 60 { return "\(s) 秒前" }
-        if s < 3600 { return "\(s / 60) 分钟前" }
-        return "\(s / 3600) 小时前"
+        if s < 10 { return L10n.tr("刚刚") }
+        if s < 60 { return L10n.tr("%d 秒前", s) }
+        if s < 3600 { return L10n.tr("%d 分钟前", s / 60) }
+        return L10n.tr("%d 小时前", s / 3600)
     }
 }
 
@@ -227,7 +227,7 @@ struct PingLabel: View {
     var font: Font = .caption2
     var body: some View {
         Text(ping.shortLabel).font(font).foregroundStyle(ping.isDirect ? .green : .orange)
-            .help("最近一次连接探测结果；中继连接也可使用。探测成功不代表远端的具体服务可用。")
+            .help(L10n.tr("最近一次连接探测结果；中继连接也可使用。探测成功不代表远端的具体服务可用。"))
     }
 }
 

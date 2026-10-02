@@ -21,13 +21,14 @@ let testingMacroFlags: [SwiftSetting] = {
 
 let package = Package(
     name: "TailCat",
+    defaultLocalization: "en",
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "TailCat", targets: ["TailCat"]),
     ],
     targets: [
         // Rules, persistence and the tailcat process supervisor. No UI, so it can be unit-tested.
-        .target(name: "TailCatCore"),
+        .target(name: "TailCatCore", resources: [.process("Resources")]),
         // Menu bar app + management window.
         .executableTarget(name: "TailCat", dependencies: ["TailCatCore"]),
         .testTarget(name: "TailCatCoreTests", dependencies: ["TailCatCore"], swiftSettings: testingMacroFlags),

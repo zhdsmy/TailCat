@@ -9,11 +9,11 @@ public enum RuleStoreError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .corrupt(let backup):
-            return "数据文件已损坏，已备份到 \(backup.path)，当前从空列表开始。"
+            return L10n.tr("数据文件已损坏，已备份到 %@，当前从空列表开始。", backup.path)
         case .unsupportedVersion(let version):
-            return "数据文件版本 \(version) 不受支持，已保留原文件，请使用兼容的 TailCat 版本。"
+            return L10n.tr("数据文件版本 %@ 不受支持，已保留原文件，请使用兼容的 TailCat 版本。", String(version))
         case .writeBlocked(let reason):
-            return "配置未能载入，已阻止覆盖：\(reason)。请修复文件后重新启动 TailCat。"
+            return L10n.tr("配置未能载入，已阻止覆盖：%@。请修复文件后重新启动 TailCat。", reason)
         }
     }
 }

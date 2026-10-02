@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 import TailCatCore
 
-/// `TailCat --snapshot <dir> [--dark] [--only=prefix]` (debug builds only): renders screens with sample
+/// `TailCat --snapshot <dir> [--dark] [--only=prefix] [--language=en|zh-Hans|zh-Hant]` (debug builds only): renders screens with sample
 /// data into PNGs and exits, so UI changes can be reviewed without the real app, its data
 /// (everything lives in a temp directory, tailcat is a fake script), or screen-recording access.
 /// Window chrome, toolbars and the menu bar itself are not part of the images.
@@ -11,10 +11,12 @@ import TailCatCore
 enum Snapshot {
     static func run(arguments: [String]) -> Never {
         guard let i = arguments.firstIndex(of: "--snapshot"), i + 1 < arguments.count else {
-            FileHandle.standardError.write(Data("usage: TailCat --snapshot <dir> [--dark] [--only=prefix]\n".utf8))
+            FileHandle.standardError.write(Data("usage: TailCat --snapshot <dir> [--dark] [--only=prefix] [--language=en|zh-Hans|zh-Hant]\n".utf8))
             exit(64)
         }
         let output = URL(fileURLWithPath: arguments[i + 1], isDirectory: true)
+        let languageOption = arguments.first { $0.hasPrefix("--language=") }.map { String($0.dropFirst("--language=".count)) }
+        L10n.configure(languageOption.flatMap(AppLanguage.init(rawValue:)) ?? .simplifiedChinese)
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         app.appearance = NSAppearance(named: arguments.contains("--dark") ? .darkAqua : .aqua)
@@ -108,7 +110,8 @@ enum Snapshot {
         }
         try await renderer.page("audit-long-menu", MenuContent(), in: sample)
         try await renderer.page("audit-long-keys", KeysView(keyHelpExpanded: true), in: sample, size: CGSize(width: 470, height: 620))
-        let error = "保存失败：无法写入所选目录。请检查目录权限，并确认外置磁盘已连接。" + String(repeating: "请保留当前配置后重试。", count: 8)
+        let error = L10n.tr("保存失败：%@", L10n.tr("无法写入所选目录。请检查目录权限，并确认外置磁盘已连接。"))
+            + String(repeating: L10n.tr("请保留当前配置后重试。"), count: 8)
         try await renderer.page("audit-long-rule-error", RuleEditor(rule: rule, isNew: true, contacts: manager.contacts,
                                                                   saveError: error, importError: error) { _ in false }, in: sample)
         try await renderer.page("audit-long-remote-error", RemoteEditor(remote: remote, isNew: true, saveError: error) { _ in false }, in: sample)
@@ -140,7 +143,7 @@ enum Snapshot {
                        RemoteFileEntry(mode: "-rw-r--r--", size: 1_048_576, modified: "Sep 29 22:40", name: longName + ".txt", isDirectory: false)]
         try await renderer.page("audit-file-list", ScrollView { FileBrowser(identity: identity, path: shared.filesDir, entries: entries).padding() },
                                 in: sample, size: CGSize(width: 460, height: 420))
-        try await renderer.page("audit-file-transfer", ScrollView { FileBrowser(identity: identity, loading: true, error: error, transfer: "正在下载 \(longName).txt…", transferRunning: true).padding() },
+        try await renderer.page("audit-file-transfer", ScrollView { FileBrowser(identity: identity, loading: true, error: error, transfer: L10n.tr("正在下载 %@…", longName + ".txt"), transferRunning: true).padding() },
                                 in: sample, size: CGSize(width: 460, height: 420))
         try await renderer.page("audit-file-empty", FileBrowser(identity: identity, entries: []).padding().frame(width: 460), in: sample)
         try await renderer.page("audit-copy-revealed", CopyableText(text: "tcLONG" + String(repeating: "q7Xk2PzR", count: 100), lineLimit: 3,
@@ -216,7 +219,7 @@ enum Snapshot {
             try await renderer.page("guide-\(name)", UsageGuide(onAddRemote: {}, onNewRule: { _ in }, topic: topic),
                                     in: sample, size: CGSize(width: 670, height: 620))
         }
-        try await page("copy-feedback", CopyButton(text: "brew install tailcat", label: "复制安装命令", copied: true).padding())
+        try await page("copy-feedback", CopyButton(text: "brew install tailcat", label: L10n.tr("复制安装命令"), copied: true).padding())
         try await renderer.page("file-browser-help", FileBrowser(identity: ClientIdentity(address: SampleWorld.macMiniAddress),
                                                                  guidanceExpanded: true).padding()
                                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading),
@@ -229,9 +232,9 @@ enum Snapshot {
             try await page("editor-forward-examples", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts,
                                                                  mappingExamplesExpanded: true) { _ in true })
             try await page("editor-rule-save-failed", RuleEditor(rule: rule, isNew: false, contacts: manager.contacts,
-                                                                 saveError: "保存失败：数据文件暂时无法写入，请重试。") { _ in false })
+                                                         saveError: L10n.tr("保存失败：数据文件暂时无法写入，请重试。")) { _ in false })
             try await page("editor-import-failed", RuleEditor(rule: rule.duplicate(), isNew: true, contacts: manager.contacts,
-                                                              importError: "命令中包含无效的端口映射") { _ in true })
+                                                              importError: L10n.tr("命令中包含无效的端口映射")) { _ in true })
             let dataFile = sample.directory.appendingPathComponent("data/rules.json")
             try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: dataFile.path)
             defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: dataFile.path) }
@@ -252,13 +255,13 @@ enum Snapshot {
             dnsRemote.address = "home.example.com"
             try await page("editor-remote-dns", RemoteEditor(remote: dnsRemote, isNew: false) { _ in true })
             try await page("editor-remote-save-failed", RemoteEditor(remote: remote, isNew: false,
-                                                                   saveError: "保存失败：数据文件暂时无法写入，请重试。") { _ in false })
+                                                                   saveError: L10n.tr("保存失败：数据文件暂时无法写入，请重试。")) { _ in false })
         }
         let unusedRemote = Remote(name: "备用远端", address: SampleWorld.officeAddress)
         manager.saveRemote(unusedRemote)
         try await page("remote-delete-failed", RemoteDetail(remote: unusedRemote, onEdit: {}, onDeleted: {},
                                                            onNewRule: { _ in }, onShowRule: { _ in },
-                                                           deleteError: "无法删除远端：数据文件暂时无法写入，请重试。"))
+                                                           deleteError: L10n.tr("无法删除远端：数据文件暂时无法写入，请重试。")))
         try await page("editor-new-socks", RuleEditor(rule: TunnelRule(kind: .socks), isNew: true, contacts: manager.contacts) { _ in true })
         try await page("editor-new-recv", RuleEditor(rule: TunnelRule(kind: .recv), isNew: true, contacts: manager.contacts) { _ in true })
         try await page("key-new-server", KeyCreateSheet(role: .server))
@@ -372,6 +375,7 @@ private final class SampleWorld {
         let found = path
         let locator = BinaryLocator(customPath: { found }, searchDirectories: [], environmentPATH: nil)
         settings = AppSettings(defaults: UserDefaults(suiteName: defaultsSuite)!)
+        settings.language = L10n.language
         manager = RuleManager(store: RuleStore(directory: directory.appendingPathComponent("data")),
                               locator: locator, settings: settings,
                               makeConfig: { remotes in Self.config(remotes) })

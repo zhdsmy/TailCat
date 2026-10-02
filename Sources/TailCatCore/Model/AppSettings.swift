@@ -11,6 +11,7 @@ public struct AppSettings: @unchecked Sendable {
         public static let verbose = "verbose"
         public static let notificationsEnabled = "notificationsEnabled"
         public static let statusLoopEnabled = "statusLoopEnabled"
+        public static let language = "appLanguage"
         static let all = [customBinaryPath, derpmapURL, verbose, notificationsEnabled, statusLoopEnabled]
         static let migratedLegacyDefaults = "migratedLegacyDefaults"
     }
@@ -29,6 +30,16 @@ public struct AppSettings: @unchecked Sendable {
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+    }
+
+    public var language: AppLanguage {
+        get { defaults.string(forKey: Key.language).flatMap(AppLanguage.init(rawValue:)) ?? .system }
+        nonmutating set {
+            defaults.set(newValue.rawValue, forKey: Key.language)
+            // Native panels and SwiftUI's built-in controls use the same language on next launch.
+            if newValue == .system { defaults.removeObject(forKey: "AppleLanguages") }
+            else { defaults.set([newValue.rawValue], forKey: "AppleLanguages") }
+        }
     }
 
     public var customBinaryPath: String? {

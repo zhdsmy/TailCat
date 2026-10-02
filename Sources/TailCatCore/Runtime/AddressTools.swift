@@ -25,7 +25,7 @@ public struct ParsedAddress: Equatable, Sendable {
         } else if !regionHostnames.isEmpty {
             parts.append(regionHostnames.joined(separator: ","))
         }
-        return parts.isEmpty ? "已解析" : parts.joined(separator: " · ")
+        return parts.isEmpty ? L10n.tr("已解析") : parts.joined(separator: " · ")
     }
 }
 
@@ -81,13 +81,13 @@ public enum ForwardImportError: Error, Equatable, Sendable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .unrecognized: return "剪贴板里没有可识别的 tc 地址或 forward 命令"
-        case .invalidQuoting: return "命令中的引号或转义不完整"
-        case .invalidAddress: return "命令中的远端地址无效"
-        case .invalidMapping: return "命令中包含无效的端口映射"
-        case .missingOptionValue(let option): return "参数 \(option) 缺少值"
-        case .unsupportedOption(let option): return "无法导入参数 \(option)；请先移除它或在 TailCat 中单独配置"
-        case .unsupportedShellSyntax: return "命令含有 shell 展开或操作符；请将字面值用单引号包住，或只粘贴单独的 forward 命令"
+        case .unrecognized: return L10n.tr("剪贴板里没有可识别的 tc 地址或 forward 命令")
+        case .invalidQuoting: return L10n.tr("命令中的引号或转义不完整")
+        case .invalidAddress: return L10n.tr("命令中的远端地址无效")
+        case .invalidMapping: return L10n.tr("命令中包含无效的端口映射")
+        case .missingOptionValue(let option): return L10n.tr("参数 %@ 缺少值", option)
+        case .unsupportedOption(let option): return L10n.tr("无法导入参数 %@；请先移除它或在 TailCat 中单独配置", option)
+        case .unsupportedShellSyntax: return L10n.tr("命令含有 shell 展开或操作符；请将字面值用单引号包住，或只粘贴单独的 forward 命令")
         }
     }
 }

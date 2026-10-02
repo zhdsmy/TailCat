@@ -53,13 +53,13 @@ struct RemoteDetail: View {
             let stale = manager.remotePings[remote.id].map { $0.at.timeIntervalSinceNow < -300 } ?? true
             if stale { await manager.pingRemote(id: remote.id) }
         }
-        .confirmationDialog("删除远端 \(remote.name)？", isPresented: $confirmDelete) {
-            Button("删除", role: .destructive) {
+        .confirmationDialog(L10n.tr("删除远端 %@？", remote.name), isPresented: $confirmDelete) {
+            Button(L10n.tr("删除"), role: .destructive) {
                 deleteError = nil
                 if manager.removeRemote(id: remote.id) {
                     onDeleted()
                 } else {
-                    deleteError = "无法删除远端：\(manager.loadError ?? "仍有规则在使用此远端")"
+                    deleteError = L10n.tr("无法删除远端：%@", manager.loadError ?? L10n.tr("仍有规则在使用此远端"))
                 }
             }
         }
@@ -79,8 +79,8 @@ struct RemoteDetail: View {
                 }
             }
             CopyableText(text: remote.address, font: .callout.monospaced(), secret: true,
-                         copyLabel: "复制完整地址")
-            Text("“打开网页”访问远端 80 端口；其他端口请新建转发。")
+                         copyLabel: L10n.tr("复制完整地址"))
+            Text(L10n.tr("“打开网页”访问远端 80 端口；其他端口请新建转发。"))
                 .font(.caption).foregroundStyle(.secondary)
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 16) {
@@ -105,22 +105,22 @@ struct RemoteDetail: View {
 
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
-            Button("打开网页", action: onBrowse)
-                .help("打开远端 80 端口；其他端口请新建转发。本地端口会自动选择空闲端口。")
+            Button(L10n.tr("打开网页"), action: onBrowse)
+                .help(L10n.tr("打开远端 80 端口；其他端口请新建转发。本地端口会自动选择空闲端口。"))
                 .fixedSize()
-            Button("编辑", action: onEdit).fixedSize()
+            Button(L10n.tr("编辑"), action: onEdit).fixedSize()
             let inUse = !manager.rules(usingRemote: remote.id).isEmpty
-            Button("删除", role: .destructive) { confirmDelete = true }
+            Button(L10n.tr("删除"), role: .destructive) { confirmDelete = true }
                 .disabled(inUse)
-                .help(inUse ? "还有规则在使用这个远端" : "")
+                .help(inUse ? L10n.tr("还有规则在使用这个远端") : "")
                 .fixedSize()
         }
     }
 
     @ViewBuilder private var sshUserLabel: some View {
         if !remote.sshUser.isEmpty {
-            Text("SSH 用户：\(remote.sshUser)").lineLimit(1).truncationMode(.middle)
-                .help("SSH 用户：\(remote.sshUser)")
+            Text(L10n.tr("SSH 用户：%@", remote.sshUser)).lineLimit(1).truncationMode(.middle)
+                .help(L10n.tr("SSH 用户：%@", remote.sshUser))
         }
     }
 
@@ -128,15 +128,15 @@ struct RemoteDetail: View {
     /// when `client-default` does not exist, which breaks servers that use --allow.
     @ViewBuilder private var clientKeyLabel: some View {
         if !remote.key.isEmpty {
-            Text("客户端密钥：\(remote.key)")
-                .lineLimit(1).truncationMode(.middle).help("客户端密钥：\(remote.key)")
+            Text(L10n.tr("客户端密钥：%@", remote.key))
+                .lineLimit(1).truncationMode(.middle).help(L10n.tr("客户端密钥：%@", remote.key))
         } else if manager.savedKeys.contains("client-default") {
-            Text("客户端密钥：client-default")
+            Text(L10n.tr("客户端密钥：client-default"))
         } else {
             HStack(spacing: 4) {
-                Text("客户端密钥：临时（每次连接换公钥，对方无法用 --allow 放行）")
+                Text(L10n.tr("客户端密钥：临时（每次连接换公钥，对方无法用 --allow 放行）"))
                     .fixedSize(horizontal: false, vertical: true)
-                Button("去创建 client-default") { navigation.selection = .keys }
+                Button(L10n.tr("去创建 client-default")) { navigation.selection = .keys }
                     .buttonStyle(.link).font(.caption).foregroundStyle(.tint)
                     .fixedSize()
             }
@@ -150,11 +150,11 @@ struct RemoteDetail: View {
                 if let result = status.result {
                     PingLabel(ping: result, font: .callout.monospaced())
                 } else {
-                    Text("无响应").foregroundStyle(.red)
+                    Text(L10n.tr("无响应")).foregroundStyle(.red)
                 }
                 Ago(date: status.at)
             } else if !pinging {
-                Text("尚未检测").foregroundStyle(.secondary)
+                Text(L10n.tr("尚未检测")).foregroundStyle(.secondary)
             }
             if pinging { ProgressView().controlSize(.small) }
         }
@@ -162,18 +162,18 @@ struct RemoteDetail: View {
 
     private func probeActions(pinging: Bool) -> some View {
         HStack(spacing: 8) {
-            Button("测试连接") { Task { await ping(untilDirect: false) } }
+            Button(L10n.tr("测试连接")) { Task { await ping(untilDirect: false) } }
                 .disabled(pinging).fixedSize()
-            Button("等待直连") { Task { await ping(untilDirect: true) } }
+            Button(L10n.tr("等待直连")) { Task { await ping(untilDirect: true) } }
                 .disabled(pinging)
-                .help("等待直连探测结果；超时不代表远端离线，中继仍可使用。")
+                .help(L10n.tr("等待直连探测结果；超时不代表远端离线，中继仍可使用。"))
                 .fixedSize()
         }
     }
 
     private var connectivity: some View {
         let pinging = manager.pingingRemotes.contains(remote.id)
-        return GroupBox("连接探测") {
+        return GroupBox(L10n.tr("连接探测")) {
             VStack(alignment: .leading, spacing: 6) {
                 ViewThatFits(in: .horizontal) {
                     HStack {
@@ -187,24 +187,24 @@ struct RemoteDetail: View {
                     }
                 }
                 if directTimedOut {
-                    Text("等待结束，未测得直连；超时不代表远端离线，中继仍可使用。")
+                    Text(L10n.tr("等待结束，未测得直连；超时不代表远端离线，中继仍可使用。"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Text("最近一次探测成功不代表远端的具体服务可用。直连与中继都可使用。")
+                Text(L10n.tr("最近一次探测成功不代表远端的具体服务可用。直连与中继都可使用。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
     }
 
     private var rulesBox: some View {
-        GroupBox("使用该远端的规则") {
+        GroupBox(L10n.tr("使用该远端的规则")) {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(manager.runners.filter { $0.rule.remoteID == remote.id }) { runner in
                     RuleLink(runner: runner) { onShowRule(runner.id) }
                 }
                 HStack {
-                    Button("新建转发…") { onNewRule(.forward) }.fixedSize()
-                    Button("新建 SOCKS（经此远端出口）…") { onNewRule(.socks) }.fixedSize()
+                    Button(L10n.tr("新建转发…")) { onNewRule(.forward) }.fixedSize()
+                    Button(L10n.tr("新建 SOCKS（经此远端出口）…")) { onNewRule(.socks) }.fixedSize()
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -225,7 +225,7 @@ struct RemoteDetail: View {
                     }
                 }
                 if let sshError { Text(sshError).font(.caption).foregroundStyle(.red) }
-                Text("需要对方开放 tailcat 的 SSH 服务，或开放运行系统 sshd 的端口；登录仍需相应的 SSH 授权。")
+                Text(L10n.tr("需要对方开放 tailcat 的 SSH 服务，或开放运行系统 sshd 的端口；登录仍需相应的 SSH 授权。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -233,17 +233,17 @@ struct RemoteDetail: View {
     }
 
     private var sshPortField: some View {
-        TextField("端口（默认 22，经出口节点可填 ip:port）", text: $sshPort)
+        TextField(L10n.tr("端口（默认 22，经出口节点可填 ip:port）"), text: $sshPort)
             .frame(maxWidth: 260)
     }
 
     private var sshActions: some View {
         HStack(spacing: 8) {
-            Button("打开 SSH…") { openSSH() }
-                .help("在终端中连接这个远端的 SSH 服务").fixedSize()
-            CopyButton(text: sshCommand(), label: "复制命令", iconOnly: false)
+            Button(L10n.tr("打开 SSH…")) { openSSH() }
+                .help(L10n.tr("在终端中连接这个远端的 SSH 服务")).fixedSize()
+            CopyButton(text: sshCommand(), label: L10n.tr("复制命令"), iconOnly: false)
                 .disabled(!SSHLauncher.isValidPort(sshPort))
-                .help(SSHLauncher.isValidPort(sshPort) ? "复制 tailcat SSH 命令" : "端口格式不对")
+                .help(L10n.tr(SSHLauncher.isValidPort(sshPort) ? "复制 tailcat SSH 命令" : "端口格式不对"))
         }
     }
 
@@ -254,7 +254,7 @@ struct RemoteDetail: View {
     }
 
     private func sshArguments() -> [String]? {
-        guard SSHLauncher.isValidPort(sshPort) else { sshError = "端口格式不对"; return nil }
+        guard SSHLauncher.isValidPort(sshPort) else { sshError = L10n.tr("端口格式不对"); return nil }
         sshError = nil
         return SSHLauncher.arguments(identity: remote.identity, user: remote.sshUser, port: sshPort)
     }
@@ -271,7 +271,7 @@ struct RemoteDetail: View {
             let script = try SSHLauncher.writeScript(executable: exe, arguments: args)
             NSWorkspace.shared.open(script)
         } catch {
-            sshError = "无法创建终端脚本：\(error.localizedDescription)"
+            sshError = L10n.tr("无法创建终端脚本：%@", error.localizedDescription)
         }
     }
 }
@@ -326,7 +326,7 @@ struct FileBrowser: View {
     private var isTransferring: Bool { transferRunning || transferTask != nil }
 
     var body: some View {
-        GroupBox("文件") {
+        GroupBox(L10n.tr("文件")) {
             VStack(alignment: .leading, spacing: 6) {
                 ViewThatFits(in: .horizontal) {
                     HStack {
@@ -339,7 +339,7 @@ struct FileBrowser: View {
                         listingActions
                     }
                 }
-                Toggle("保留修改时间和权限", isOn: $preserveFileMetadata)
+                Toggle(L10n.tr("保留修改时间和权限"), isOn: $preserveFileMetadata)
                     .disabled(isTransferring)
                 if loading { ProgressView().controlSize(.small) }
                 if let error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
@@ -350,13 +350,13 @@ struct FileBrowser: View {
                             .fixedSize(horizontal: false, vertical: true)
                         if isTransferring {
                             ProgressView().controlSize(.small)
-                            Button("取消") { transferTask?.cancel() }.buttonStyle(.link)
+                            Button(L10n.tr("取消")) { transferTask?.cancel() }.buttonStyle(.link)
                                 .fixedSize()
                         }
                     }
                 }
                 if let entries {
-                    if entries.isEmpty { Text("空目录").foregroundStyle(.secondary) }
+                    if entries.isEmpty { Text(L10n.tr("空目录")).foregroundStyle(.secondary) }
                     ForEach(entries) { entry in
                         HStack {
                             Image(systemName: entry.isDirectory ? "folder" : "doc")
@@ -373,16 +373,16 @@ struct FileBrowser: View {
                                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                             Text(entry.modified).font(.caption.monospaced()).foregroundStyle(.secondary)
                                 .lineLimit(1).help(entry.modified)
-                            Button("下载") { download(entry) }.buttonStyle(.link)
+                            Button(L10n.tr("下载")) { download(entry) }.buttonStyle(.link)
                                 .disabled(isTransferring).fixedSize()
                         }
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("拖入文件即可发送；浏览和下载需要对方提供可读取的文件服务。")
+                        Text(L10n.tr("拖入文件即可发送；浏览和下载需要对方提供可读取的文件服务。"))
                             .font(.caption).foregroundStyle(.secondary)
-                        DisclosureGroup("无法列出文件？", isExpanded: $guidanceExpanded) {
-                            Text("请对方确认已开放可读取的文件服务，并允许当前客户端访问。仅接收模式不提供浏览或下载；列出文件使用的 ls 不携带 SSH 公钥，也无法列出需要 SSH 公钥认证的服务。")
+                        DisclosureGroup(L10n.tr("无法列出文件？"), isExpanded: $guidanceExpanded) {
+                            Text(L10n.tr("请对方确认已开放可读取的文件服务，并允许当前客户端访问。仅接收模式不提供浏览或下载；列出文件使用的 ls 不携带 SSH 公钥，也无法列出需要 SSH 公钥认证的服务。"))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -402,19 +402,19 @@ struct FileBrowser: View {
         HStack(spacing: 6) {
             Button { navigate(FileListing.parent(of: path)) } label: { Image(systemName: "chevron.up") }
                 .disabled(path == "." || entries == nil)
-                .help("返回上一级")
+                .help(L10n.tr("返回上一级"))
                 .fixedSize()
-            Text(path == "." ? "/（共享根目录）" : path).font(.callout.monospaced())
+            Text(path == "." ? L10n.tr("/（共享根目录）") : path).font(.callout.monospaced())
                 .lineLimit(1).truncationMode(.middle)
-                .help(path == "." ? "/（共享根目录）" : path)
+                .help(path == "." ? L10n.tr("/（共享根目录）") : path)
         }
     }
 
     private var listingActions: some View {
         HStack(spacing: 8) {
-            Button(entries == nil ? "列出文件" : "刷新") { navigate(path) }
+            Button(L10n.tr(entries == nil ? "列出文件" : "刷新")) { navigate(path) }
                 .disabled(loading).fixedSize()
-            Button("发送文件…") { upload(Panels.chooseFiles(message: "选择要发送到远端的文件或目录")) }
+            Button(L10n.tr("发送文件…")) { upload(Panels.chooseFiles(message: L10n.tr("选择要发送到远端的文件或目录"))) }
                 .disabled(isTransferring).fixedSize()
         }
     }
@@ -429,7 +429,7 @@ struct FileBrowser: View {
                 path = newPath
                 entries = list.sorted { ($0.isDirectory ? 0 : 1, $0.name) < ($1.isDirectory ? 0 : 1, $1.name) }
             case .failure(let e):
-                error = "列出失败：\(e.message)"
+                error = L10n.tr("列出失败：%@", e.message)
             }
         }
     }
@@ -438,12 +438,12 @@ struct FileBrowser: View {
         guard !urls.isEmpty, !isTransferring else { return }
         let target = entries == nil ? "" : path
         let preserve = preserveFileMetadata
-        transfer = "正在发送 \(urls.count) 项…"
+        transfer = L10n.tr("正在发送 %d 项…", urls.count)
         transferTask = Task {
             let result = await manager.cli.upload(identity, files: urls, remotePath: target, preserve: preserve)
             switch result {
-            case .success: transfer = "已发送 \(urls.count) 项"
-            case .failure(let e): transfer = Task.isCancelled ? "已取消" : "发送失败：\(e.message)"
+            case .success: transfer = L10n.tr("已发送 %d 项", urls.count)
+            case .failure(let e): transfer = Task.isCancelled ? L10n.tr("已取消") : L10n.tr("发送失败：%@", e.message)
             }
             transferTask = nil
             if case .success = result, entries != nil { navigate(path) }
@@ -451,15 +451,15 @@ struct FileBrowser: View {
     }
 
     private func download(_ entry: RemoteFileEntry) {
-        guard let dir = Panels.chooseDirectory(message: "下载 \(entry.name) 到…", prompt: "下载") else { return }
+        guard let dir = Panels.chooseDirectory(message: L10n.tr("下载 %@ 到…", entry.name), prompt: L10n.tr("下载")) else { return }
         let preserve = preserveFileMetadata
-        transfer = "正在下载 \(entry.name)…"
+        transfer = L10n.tr("正在下载 %@…", entry.name)
         transferTask = Task {
             let result = await manager.cli.download(identity, remotePath: FileListing.join(path, entry.name),
                                                     isDirectory: entry.isDirectory, to: dir, preserve: preserve)
             switch result {
-            case .success: transfer = "已下载到 \(dir.path)"
-            case .failure(let e): transfer = Task.isCancelled ? "已取消" : "下载失败：\(e.message)"
+            case .success: transfer = L10n.tr("已下载到 %@", dir.path)
+            case .failure(let e): transfer = Task.isCancelled ? L10n.tr("已取消") : L10n.tr("下载失败：%@", e.message)
             }
             transferTask = nil
         }
@@ -472,10 +472,10 @@ enum FileSender {
     static func send(_ urls: [URL], to remote: Remote, using cli: TailcatCLI) {
         guard !urls.isEmpty else { return }
         Task {
-            let label = urls.count == 1 ? urls[0].lastPathComponent : "\(urls.count) 项"
+            let label = urls.count == 1 ? urls[0].lastPathComponent : L10n.tr("%d 项", urls.count)
             switch await cli.upload(remote.identity, files: urls, remotePath: "") {
-            case .success: AppNotifications.post(title: remote.name, body: "已发送 \(label)")
-            case .failure(let e): AppNotifications.post(title: remote.name, body: "发送 \(label) 失败：\(e.message)")
+            case .success: AppNotifications.post(title: remote.name, body: L10n.tr("已发送 %@", label))
+            case .failure(let e): AppNotifications.post(title: remote.name, body: L10n.tr("发送 %@ 失败：%@", label, e.message))
             }
         }
     }
@@ -521,9 +521,9 @@ struct PerfPanel: View {
     }
 
     var body: some View {
-        GroupBox("测速（tailcat perf）") {
+        GroupBox(L10n.tr("测速（tailcat perf）")) {
             if manager.capabilities == nil {
-                Text("正在检测 tailcat 功能…").foregroundStyle(.secondary)
+                Text(L10n.tr("正在检测 tailcat 功能…")).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if manager.capabilities?.perf == true { panel } else { unsupported }
         }
@@ -531,19 +531,19 @@ struct PerfPanel: View {
 
     private var unsupported: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("当前版本不支持测速。安装支持 perf 的 tailcat 版本后，点击“重新检测”。")
+            Text(L10n.tr("当前版本不支持测速。安装支持 perf 的 tailcat 版本后，点击“重新检测”。"))
                 .foregroundStyle(.secondary)
             ViewThatFits(in: .horizontal) {
                 HStack {
-                    Text("Homebrew 用户可尝试更新：").foregroundStyle(.secondary)
-                    CopyableText(text: "brew upgrade tailcat", font: .callout.monospaced(), copyLabel: "复制更新命令")
+                    Text(L10n.tr("Homebrew 用户可尝试更新：")).foregroundStyle(.secondary)
+                    CopyableText(text: "brew upgrade tailcat", font: .callout.monospaced(), copyLabel: L10n.tr("复制更新命令"))
                     Spacer(minLength: 8)
                     recheckButton
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Homebrew 用户可尝试更新：").foregroundStyle(.secondary)
+                    Text(L10n.tr("Homebrew 用户可尝试更新：")).foregroundStyle(.secondary)
                     HStack {
-                        CopyableText(text: "brew upgrade tailcat", font: .callout.monospaced(), copyLabel: "复制更新命令")
+                        CopyableText(text: "brew upgrade tailcat", font: .callout.monospaced(), copyLabel: L10n.tr("复制更新命令"))
                         Spacer(minLength: 8)
                         recheckButton
                     }
@@ -558,13 +558,13 @@ struct PerfPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             optionsForm.disabled(running)
             HStack {
-                Button(running ? "测速中…" : "开始测速") { start() }
+                Button(L10n.tr(running ? "测速中…" : "开始测速")) { start() }
                     .disabled(running || !options.isValid)
                 if running {
                     ProgressView().controlSize(.small)
-                    Button("取消") { task?.cancel() }.buttonStyle(.link)
+                    Button(L10n.tr("取消")) { task?.cancel() }.buttonStyle(.link)
                 }
-                if !options.isValid { Text("参数不合法").font(.caption).foregroundStyle(.red) }
+                if !options.isValid { Text(L10n.tr("参数不合法")).font(.caption).foregroundStyle(.red) }
             }
             if let error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             if let report { result(report) }
@@ -604,44 +604,44 @@ struct PerfPanel: View {
                     bitrateField
                 }
             }
-            Toggle("允许经 DERP 中继测速（--via-derp，Tailscale 公共中继始终拒绝）", isOn: $options.viaDERP)
+            Toggle(L10n.tr("允许经 DERP 中继测速（--via-derp，Tailscale 公共中继始终拒绝）"), isOn: $options.viaDERP)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var protocolPicker: some View {
-        Picker("协议", selection: $options.proto) {
+        Picker(L10n.tr("协议"), selection: $options.proto) {
             ForEach(PerfOptions.Proto.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
         }
         .pickerStyle(.segmented).frame(width: 160)
     }
 
     private var directionPicker: some View {
-        Picker("方向", selection: $options.direction) {
+        Picker(L10n.tr("方向"), selection: $options.direction) {
             ForEach(PerfOptions.Direction.allCases, id: \.self) { Text($0.label).tag($0) }
         }
         .frame(width: 240)
     }
 
     private var parallelStepper: some View {
-        Stepper("并发流 \(options.parallel)", value: $options.parallel, in: 1...16)
+        Stepper(L10n.tr("并发流 %d", options.parallel), value: $options.parallel, in: 1...16)
     }
 
     private var durationStepper: some View {
-        Stepper("时长 \(options.seconds)s", value: $options.seconds, in: 1...120)
+        Stepper(L10n.tr("时长 %ds", options.seconds), value: $options.seconds, in: 1...120)
             .disabled(!options.bytes.isEmpty)
     }
 
     private var bytesField: some View {
-        TextField("每流字节数（如 100M，可选）", text: $options.bytes).frame(width: 200)
+        TextField(L10n.tr("每流字节数（如 100M，可选）"), text: $options.bytes).frame(width: 240)
     }
 
     private var bitrateField: some View {
-        TextField("每流码率（如 50M，可选）", text: $options.bitrate).frame(width: 200)
+        TextField(L10n.tr("每流码率（如 50M，可选）"), text: $options.bitrate).frame(width: 240)
     }
 
     private var recheckButton: some View {
-        Button("重新检测") { Task { await manager.refreshTailcatInfo() } }.fixedSize()
+        Button(L10n.tr("重新检测")) { Task { await manager.refreshTailcatInfo() } }.fixedSize()
     }
 
     @ViewBuilder private func result(_ report: PerfReport) -> some View {
@@ -651,10 +651,10 @@ struct PerfPanel: View {
         let samples = report.samples
         if !samples.isEmpty {
             Chart(samples) { s in
-                LineMark(x: .value("秒", s.second), y: .value("Mbit/s", s.mbps))
-                    .foregroundStyle(by: .value("方向", s.series))
-                PointMark(x: .value("秒", s.second), y: .value("Mbit/s", s.mbps))
-                    .foregroundStyle(by: .value("方向", s.series))
+                LineMark(x: .value(L10n.tr("秒"), s.second), y: .value("Mbit/s", s.mbps))
+                    .foregroundStyle(by: .value(L10n.tr("方向"), s.series))
+                PointMark(x: .value(L10n.tr("秒"), s.second), y: .value("Mbit/s", s.mbps))
+                    .foregroundStyle(by: .value(L10n.tr("方向"), s.series))
                     .symbolSize(12)
             }
             .chartYAxisLabel("Mbit/s")
@@ -674,9 +674,9 @@ struct PerfPanel: View {
             switch result {
             case .success(let r): report = r
             case .failure(let e):
-                if Task.isCancelled { error = "已取消"; return }
+                if Task.isCancelled { error = L10n.tr("已取消"); return }
                 error = e.message.localizedCaseInsensitiveContains("derp")
-                    ? "\(e.message)\n当前经 DERP 中继。perf 默认拒绝经中继测速；自建中继可勾选“允许经 DERP”，Tailscale 公共中继始终拒绝。"
+                    ? L10n.tr("%@\n当前经 DERP 中继。perf 默认拒绝经中继测速；自建中继可勾选“允许经 DERP”，Tailscale 公共中继始终拒绝。", e.message)
                     : e.message
             }
         }
@@ -713,17 +713,17 @@ struct RemoteEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(isNew ? "新增远端" : "编辑远端").font(.headline)
+            Text(L10n.tr(isNew ? "新增远端" : "编辑远端")).font(.headline)
             Form {
-                TextField("名称", text: $remote.name, prompt: Text("如 Mac mini、公司 NAS"))
+                TextField(L10n.tr("名称"), text: $remote.name, prompt: Text(L10n.tr("如 Mac mini、公司 NAS")))
                 AddressField(address: $remote.address)
-                Picker("客户端密钥", selection: $remote.key) {
-                    Text("默认（client-default，未保存则每次临时）").tag("")
+                Picker(L10n.tr("客户端密钥"), selection: $remote.key) {
+                    Text(L10n.tr("默认（client-default，未保存则每次临时）")).tag("")
                     ForEach(clientKeys, id: \.self) { Text($0).tag($0) }
                 }
-                Text("对方限制客户端时，请选择已保存的客户端密钥，把它的 nodekey: 公钥交给对方加入允许列表（在“密钥”里复制）。SSH 登录使用单独的 SSH 公钥。")
+                Text(L10n.tr("对方限制客户端时，请选择已保存的客户端密钥，把它的 nodekey: 公钥交给对方加入允许列表（在“密钥”里复制）。SSH 登录使用单独的 SSH 公钥。"))
                     .font(.caption).foregroundStyle(.secondary)
-                TextField("SSH 用户名", text: $remote.sshUser, prompt: Text("可选"))
+                TextField(L10n.tr("SSH 用户名"), text: $remote.sshUser, prompt: Text(L10n.tr("可选")))
             }
             .formStyle(.grouped)
             if !issues.isEmpty {
@@ -732,7 +732,7 @@ struct RemoteEditor: View {
             if let saveError { Text(Diagnostics.mask(saveError)).foregroundStyle(.red).font(.caption) }
             HStack {
                 if isNew {
-                    Button("从剪贴板粘贴地址") {
+                    Button(L10n.tr("从剪贴板粘贴地址")) {
                         saveError = nil
                         switch AddressTools.parseForward(Clipboard.string ?? "") {
                         case .success(let imported): imported.apply(to: &remote)
@@ -741,8 +741,8 @@ struct RemoteEditor: View {
                     }
                 }
                 Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("保存") { save() }.keyboardShortcut(.defaultAction)
+                Button(L10n.tr("取消")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(L10n.tr("保存")) { save() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding()
@@ -758,7 +758,7 @@ struct RemoteEditor: View {
         issues = c.validate()
         guard issues.isEmpty else { return }
         guard onSave(c) else {
-            saveError = manager.loadError ?? "保存失败"
+            saveError = manager.loadError ?? L10n.tr("保存失败")
             return
         }
         dismiss()

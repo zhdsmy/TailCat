@@ -32,9 +32,9 @@ public struct MappingSpec: Equatable, Sendable {
 
     /// Human-readable form for the UI, e.g. "本机 2222 → 远端 22".
     public var displayLabel: String {
-        let local = localPort == 0 ? "本机 自动分配端口" : "本机 \(localPort)"
-        if let remoteHost { return "\(local) → \(remoteHost):\(remotePort)（经远端）" }
-        return "\(local) → 远端 \(remotePort)"
+        let local = localPort == 0 ? L10n.tr("本机 自动分配端口") : L10n.tr("本机 %@", String(localPort))
+        if let remoteHost { return L10n.tr("%@ → %@:%@（经远端）", local, remoteHost, String(remotePort)) }
+        return L10n.tr("%@ → 远端 %@", local, String(remotePort))
     }
 
     static func port(_ s: String, allowZero: Bool) -> Int? {

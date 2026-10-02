@@ -179,7 +179,7 @@ public final class RuleManager: ObservableObject {
             $0.rule.kind == .forward && $0.rule.remoteID == remoteID && $0.rule.bind == "127.0.0.1"
                 && $0.rule.cleanedMappings == ["0:80"] && $0.rule.openBrowser
         }) { return runner }
-        let rule = TunnelRule(name: "\(remote.name) · 网页", remoteID: remoteID,
+        let rule = TunnelRule(name: L10n.tr("%@ · 网页", remote.name), remoteID: remoteID,
                               mappings: ["0:80"], openBrowser: true)
         return add(rule) ? runner(id: rule.id) : nil
     }
@@ -232,7 +232,7 @@ public final class RuleManager: ObservableObject {
         if let old, old.address != remote.address || old.key != remote.key {
             remotePings[remote.id] = nil
             for runner in runners where runner.rule.remoteID == remote.id {
-                runner.restart(reason: "远端「\(remote.name)」已修改")
+                runner.restart(reason: L10n.tr("远端「%@」已修改", remote.name))
             }
         }
         return true
@@ -386,7 +386,7 @@ public final class RuleManager: ObservableObject {
     @discardableResult
     private func persist(_ rules: [TunnelRule]) -> Bool {
         do { try store.save(rules); setStoreError(nil, for: store.fileURL); return true } catch {
-            setStoreError("保存失败：\(error.localizedDescription)", for: store.fileURL)
+            setStoreError(L10n.tr("保存失败：%@", error.localizedDescription), for: store.fileURL)
             return false
         }
     }
@@ -394,13 +394,13 @@ public final class RuleManager: ObservableObject {
     @discardableResult
     private func persist<T: Codable>(_ items: [T], to store: ListStore<T>) -> Bool {
         do { try store.save(items); setStoreError(nil, for: store.fileURL); return true } catch {
-            setStoreError("保存失败：\(error.localizedDescription)", for: store.fileURL)
+            setStoreError(L10n.tr("保存失败：%@", error.localizedDescription), for: store.fileURL)
             return false
         }
     }
 
     private func setStoreError(_ message: String?, for url: URL) {
-        storeErrors[url] = message.map { Diagnostics.mask("\(url.lastPathComponent)：\($0)") }
+        storeErrors[url] = message.map { Diagnostics.mask(L10n.tr("%@：%@", url.lastPathComponent, $0)) }
         // A successful retry clears only this file's error, not an unrelated failed load.
         loadError = storeErrors.isEmpty ? nil : storeErrors.sorted { $0.key.path < $1.key.path }
             .map(\.value).joined(separator: "\n")

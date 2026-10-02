@@ -34,6 +34,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/TailCat"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# SwiftPM's localized resource bundle must travel with the installed app.
+ditto "$(dirname "$BIN")/TailCat_TailCatCore.bundle" "$APP/Contents/Resources/TailCat_TailCatCore.bundle"
 
 codesign --force --sign - "$APP"
 # Finder caches icons per bundle path; a fresh mtime makes it pick up a changed AppIcon.

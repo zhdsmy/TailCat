@@ -20,14 +20,14 @@ struct MenuContent: View {
             Divider().padding(.vertical, 4)
             VStack(spacing: 8) {
                 HStack {
-                    Button("管理…") { show(nil) }
-                    Button("接收…") { startReceiving() }.help("选择一个目录，开始接收别人发来的文件")
+                    Button(L10n.tr("管理…")) { show(nil) }
+                    Button(L10n.tr("接收…")) { startReceiving() }.help(L10n.tr("选择一个目录，开始接收别人发来的文件"))
                     if !manager.remotes.isEmpty {
-                        Menu("发送…") {
+                        Menu(L10n.tr("发送…")) {
                             ForEach(manager.remotes) { remote in
                                 Button(remote.name) {
                                     NSApp.activate(ignoringOtherApps: true)
-                                    FileSender.send(Panels.chooseFiles(message: "选择要发送到 \(remote.name) 的文件"),
+                                    FileSender.send(Panels.chooseFiles(message: L10n.tr("选择要发送到 %@ 的文件", remote.name)),
                                                     to: remote, using: manager.cli)
                                 }
                             }
@@ -37,15 +37,15 @@ struct MenuContent: View {
                     Spacer()
                 }
                 HStack {
-                    Button { show(.help) } label: { Label("使用说明", systemImage: "questionmark.circle") }
+                    Button { show(.help) } label: { Label(L10n.tr("使用说明"), systemImage: "questionmark.circle") }
                         .buttonStyle(.link)
                     Spacer()
                     Button {
                         NSApp.activate(ignoringOtherApps: true)
                         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
                     } label: { Image(systemName: "gearshape") }
-                        .help("设置").accessibilityLabel("设置")
-                    Button("退出") { NSApp.terminate(nil) }.help("退出 TailCat 并停止所有由它启动的规则")
+                        .help(L10n.tr("设置")).accessibilityLabel(L10n.tr("设置"))
+                    Button(L10n.tr("退出")) { NSApp.terminate(nil) }.help(L10n.tr("退出 TailCat 并停止所有由它启动的规则"))
                 }
             }
             .padding(.horizontal, 12).padding(.bottom, 8)
@@ -56,7 +56,7 @@ struct MenuContent: View {
     private var rulesContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             if manager.runners.isEmpty {
-                Text("还没有规则，点“管理…”新建").foregroundStyle(.secondary).padding(12)
+                Text(L10n.tr("还没有规则，点“管理…”新建")).foregroundStyle(.secondary).padding(12)
             }
             ForEach(TunnelKind.displayOrder, id: \.self) { kind in
                 let runners = manager.runners.filter { $0.rule.kind == kind }
@@ -81,12 +81,12 @@ struct MenuContent: View {
     /// Picks a folder and starts (or reuses) a recv rule for it.
     private func startReceiving() {
         NSApp.activate(ignoringOtherApps: true)
-        guard let url = Panels.chooseDirectory(message: "选择接收文件的目录", prompt: "开始接收") else { return }
+        guard let url = Panels.chooseDirectory(message: L10n.tr("选择接收文件的目录"), prompt: L10n.tr("开始接收")) else { return }
         let id: UUID
         if let existing = manager.rules.first(where: { $0.kind == .recv && $0.recvDir == url.path }) {
             id = existing.id
         } else {
-            let rule = TunnelRule(name: "收件箱 · \(url.lastPathComponent)", kind: .recv, recvDir: url.path)
+            let rule = TunnelRule(name: L10n.tr("收件箱 · %@", url.lastPathComponent), kind: .recv, recvDir: url.path)
             guard manager.add(rule) else { show(nil); return }
             id = rule.id
         }
@@ -112,7 +112,7 @@ private struct MenuRow: View {
                         Image(systemName: "exclamationmark.shield").foregroundStyle(.red).font(.caption)
                     }
                     if let count = manager.inbox[runner.id]?.count, count > 0 {
-                        Text("新 \(count)").font(.caption2).foregroundStyle(.blue)
+                        Text(L10n.tr("新 %d", count)).font(.caption2).foregroundStyle(.blue)
                     }
                 }
                 details
@@ -132,17 +132,17 @@ private struct MenuRow: View {
         case .forward where !runner.listeners.isEmpty:
             ForEach(runner.listeners, id: \.self) { l in
                 CopyButton(text: l.hostPort, label: l.hostPort, iconOnly: false)
-                    .buttonStyle(.link).font(.caption.monospaced()).help("点击复制")
+                    .buttonStyle(.link).font(.caption.monospaced()).help(L10n.tr("点击复制"))
             }
         case .socks where runner.socksAddress != nil:
             CopyButton(text: runner.socksAddress!, label: runner.socksAddress!, iconOnly: false)
-                .buttonStyle(.link).font(.caption.monospaced()).help("点击复制")
+                .buttonStyle(.link).font(.caption.monospaced()).help(L10n.tr("点击复制"))
         case .serve where runner.serverAddress != nil, .recv where runner.serverAddress != nil:
             HStack(spacing: 8) {
-                CopyButton(text: runner.serverAddress!, label: "复制完整地址", iconOnly: false)
+                CopyButton(text: runner.serverAddress!, label: L10n.tr("复制完整地址"), iconOnly: false)
                     .buttonStyle(.link).font(.caption)
                 if runner.rule.kind == .recv {
-                    Button("打开目录") { NSWorkspace.shared.open(URL(fileURLWithPath: runner.rule.recvDir)) }
+                    Button(L10n.tr("打开目录")) { NSWorkspace.shared.open(URL(fileURLWithPath: runner.rule.recvDir)) }
                         .buttonStyle(.link).font(.caption)
                 }
             }

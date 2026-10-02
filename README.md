@@ -1,5 +1,7 @@
 # TailCat
 
+**简体中文** · [English](README.en.md)
+
 macOS 菜单栏工具：把 [tailcat](https://github.com/tailscale/tailcat) 的转发、服务、文件与诊断包进图形界面。Mac 既可以作为客户端连接别人，也可以作为服务端把本机端口、目录、SSH 提供出去。
 
 <p>
@@ -8,6 +10,8 @@ macOS 菜单栏工具：把 [tailcat](https://github.com/tailscale/tailcat) 的�
 </p>
 
 截图由示例数据渲染（见 `scripts/snapshot.sh`），不含真实地址或本机路径。
+
+支持 **English、简体中文、繁體中文**。默认跟随系统语言，其他系统语言回退到英语；可在“设置 › 语言”指定显示语言，重启 TailCat 后生效。
 
 ## 要求
 
@@ -61,6 +65,7 @@ swift build --product TailCatPackageTests && swift test --skip-build
 
 ```bash
 ./scripts/snapshot.sh            # 用示例数据渲染各页面到 build/snapshots/（--dark 为深色）
+./scripts/snapshot.sh --language=en # 英文；也可用 zh-Hans、zh-Hant，深色加 --dark
 swift scripts/capture-windows.swift   # 截取正在运行的 TailCat 可见窗口到 build/captures/
 ```
 
@@ -123,12 +128,13 @@ App 为 ad-hoc 签名、仅菜单栏（`LSUIElement`），没有 Dock 图标；A
 | `key-meta.json` | key 的角色、地址、公钥、区域缓存（不含私钥） |
 | `pids.json` | 子进程 pid、可执行文件路径与启动时间，崩溃后用于清理孤儿进程（pid 被其他进程复用时不会误杀） |
 
-偏好设置存在 UserDefaults（domain `io.github.zhdsmy.TailCat`；`customBinaryPath`、`derpmapURL`、`verbose`、`notificationsEnabled`、`statusLoopEnabled`）。
+偏好设置存在 UserDefaults（domain `io.github.zhdsmy.TailCat`；`customBinaryPath`、`derpmapURL`、`verbose`、`notificationsEnabled`、`statusLoopEnabled`、`appLanguage`）。语言选择同时同步原生 `AppleLanguages`，使系统面板在重启后使用一致的语言。
 
 tailcat 自身的密钥在 `~/Library/Application Support/tailcat/keys/`，App 只通过 `tailcat genkey` / `printpub` 操作，从不读取私钥文件。
 
 ## 实现要点
 
+- i18n 使用 SwiftPM 原生 `.lproj/Localizable.strings` 资源，统一由 `TailCatCore.L10n` 加载。界面、校验错误、通知与诊断共用英语、简体中文、繁体中文三份翻译；新文案使用原简中字符串作 key，动态值使用格式占位符，单测检查所有语言的键和占位符一致。用户填写的名称、地址、CLI 参数及持久化标识不翻译，系统与 tailcat 返回的原始错误保留来源语言。
 - 所有 tailcat 调用都以 argv 形式 exec，不经 shell；用户填写的值会被校验，不能以 `-` 开头以免被当成参数。
 - `TailCatCore` 不依赖 UI，包含模型、参数构造、输出解析（listener、服务地址、SOCKS、WARNING、状态输出、`ping`、`ls -l`、`perf --json`、区域列表）与进程监管，单元测试用 `/bin/sh` 脚本模拟 tailcat。
 - 子进程输出由专用线程阻塞读取：长期运行的隧道不占用 GCD 线程，短命令也不会因输出超过管道缓冲而卡住。

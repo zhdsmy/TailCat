@@ -8,9 +8,9 @@ public struct PerfOptions: Equatable, Sendable {
 
         public var label: String {
             switch self {
-            case .upload: return "上传（本机 → 远端）"
-            case .download: return "下载（远端 → 本机）"
-            case .both: return "双向"
+            case .upload: return L10n.tr("上传（本机 → 远端）")
+            case .download: return L10n.tr("下载（远端 → 本机）")
+            case .both: return L10n.tr("双向")
             }
         }
     }
@@ -74,7 +74,9 @@ public struct PerfReport: Decodable, Equatable, Sendable {
 
         public var label: String {
             let rttMS = String(format: "%.1fms", Double(rtt) / 1e6)
-            return direct ? "直连 \(endpoint ?? "")，rtt \(rttMS)" : "中继 DERP(\(derpRegion ?? "?"))，rtt \(rttMS)"
+            return direct
+                ? L10n.tr("直连 %@，rtt %@", endpoint ?? "", rttMS)
+                : L10n.tr("中继 DERP(%@)，rtt %@", derpRegion ?? "?", rttMS)
         }
     }
 
@@ -142,7 +144,7 @@ public struct PerfReport: Decodable, Equatable, Sendable {
         let step = Double(params.interval ?? 1_000_000_000) / 1e9
         guard step > 0 else { return [] }
         var out: [Sample] = []
-        for (name, stats) in [("发送", clientSent), ("接收", clientReceived)] {
+        for (name, stats) in [(L10n.tr("发送"), clientSent), (L10n.tr("接收"), clientReceived)] {
             guard let intervals = stats?.intervals else { continue }
             for (i, iv) in intervals.enumerated() {
                 out.append(Sample(series: name, second: Double(i + 1) * step,
@@ -153,29 +155,39 @@ public struct PerfReport: Decodable, Equatable, Sendable {
     }
 
     public var summaryLines: [String] {
-        var lines = ["路径：\(path.label)"]
-        if let after = pathAfter, after.direct != path.direct { lines.append("测试后路径：\(after.label)") }
+        var lines = [L10n.tr("路径：%@", path.label)]
+        if let after = pathAfter, after.direct != path.direct { lines.append(L10n.tr("测试后路径：%@", after.label)) }
         func line(_ label: String, _ s: Stats?) {
             guard let s else { return }
-            lines.append(String(format: "%@ %.2f MB，%.1f Mbit/s", label, Double(s.bytes) / 1e6, s.bitsPerSecond / 1e6))
+            lines.append(L10n.tr("%@ %.2f MB，%.1f Mbit/s", label, Double(s.bytes) / 1e6, s.bitsPerSecond / 1e6))
         }
-        line("本机发送", clientSent)
-        line("远端接收", serverReceived)
-        line("远端发送", serverSent)
-        line("本机接收", clientReceived)
+        line(L10n.tr("本机发送"), clientSent)
+        line(L10n.tr("远端接收"), serverReceived)
+        line(L10n.tr("远端发送"), serverSent)
+        line(L10n.tr("本机接收"), clientReceived)
         if params.proto == "udp" {
-            for (sent, recv, label) in [(clientSent, serverReceived, "上行"), (serverSent, clientReceived, "下行")] {
+            for (sent, recv, label) in [(clientSent, serverReceived, L10n.tr("上行")), (serverSent, clientReceived, L10n.tr("下行"))] {
                 guard let sd = sent?.datagrams, let rd = recv?.datagrams, sd > 0 else { continue }
                 let loss = Double(max(0, sd - rd)) / Double(sd) * 100
-                var text = String(format: "%@丢包 %.2f%%", label, loss)
-                if let jitter = recv?.jitter { text += String(format: "，抖动 %.2fms", Double(jitter) / 1e6) }
-                if let reordered = recv?.reordered, reordered > 0 { text += "，乱序 \(reordered)" }
+                let jitter = recv?.jitter
+                let reordered = recv?.reordered.flatMap { $0 > 0 ? String($0) : nil }
+                let text: String
+                switch (jitter, reordered) {
+                case (let jitter?, let reordered?):
+                    text = L10n.tr("%@丢包 %.2f%%，抖动 %.2fms，乱序 %@", label, loss, Double(jitter) / 1e6, reordered)
+                case (let jitter?, nil):
+                    text = L10n.tr("%@丢包 %.2f%%，抖动 %.2fms", label, loss, Double(jitter) / 1e6)
+                case (nil, let reordered?):
+                    text = L10n.tr("%@丢包 %.2f%%，乱序 %@", label, loss, reordered)
+                case (nil, nil):
+                    text = L10n.tr("%@丢包 %.2f%%", label, loss)
+                }
                 lines.append(text)
             }
         }
         if let rtt {
-            lines.append(String(format: "负载下 RTT min %.1fms avg %.1fms max %.1fms（%d 次）",
-                                Double(rtt.min) / 1e6, Double(rtt.avg) / 1e6, Double(rtt.max) / 1e6, rtt.count))
+            lines.append(L10n.tr("负载下 RTT min %.1fms avg %.1fms max %.1fms（%d 次）",
+                                 Double(rtt.min) / 1e6, Double(rtt.avg) / 1e6, Double(rtt.max) / 1e6, rtt.count))
         }
         return lines
     }

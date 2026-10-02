@@ -38,7 +38,7 @@ struct ManageView: View {
                     Text(Diagnostics.mask(error)).font(.caption).foregroundStyle(.red).textSelection(.enabled)
                     Spacer()
                     Button { manager.dismissError() } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.plain).help("关闭提示").accessibilityLabel("关闭错误提示")
+                        .buttonStyle(.plain).help(L10n.tr("关闭提示")).accessibilityLabel(L10n.tr("关闭错误提示"))
                 }
                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -55,7 +55,7 @@ struct ManageView: View {
                             }
                         }
                     }
-                    Section("远端") {
+                    Section(L10n.tr("远端")) {
                         ForEach(manager.remotes) { remote in
                             HStack {
                                 Label(remote.name, systemImage: "desktopcomputer")
@@ -63,17 +63,17 @@ struct ManageView: View {
                                 RemoteStatusDot(status: manager.remotePings[remote.id])
                             }
                             .tag(SidebarItem.remote(remote.id))
-                            .help("\(remote.name)\n拖入文件即可发送到该远端")
+                            .help(L10n.tr("%@\n拖入文件即可发送到该远端", remote.name))
                             .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                                 loadURLs(providers) { FileSender.send($0, to: remote, using: manager.cli) }
                                 return true
                             }
                         }
                     }
-                    Section("工具") {
-                        Label("密钥", systemImage: "key").tag(SidebarItem.keys)
-                        Label("通讯录", systemImage: "person.2").tag(SidebarItem.contacts)
-                        Label("使用说明", systemImage: "questionmark.circle").tag(SidebarItem.help)
+                    Section(L10n.tr("工具")) {
+                        Label(L10n.tr("密钥"), systemImage: "key").tag(SidebarItem.keys)
+                        Label(L10n.tr("通讯录"), systemImage: "person.2").tag(SidebarItem.contacts)
+                        Label(L10n.tr("使用说明"), systemImage: "questionmark.circle").tag(SidebarItem.help)
                     }
                 }
                 .listStyle(.sidebar)
@@ -82,15 +82,15 @@ struct ManageView: View {
                 .toolbar {
                     ToolbarItem {
                         Menu {
-                            Button("转发（本机端口 → 远端）") { newRule(.forward) }
-                            Button("SOCKS 代理") { newRule(.socks) }
+                            Button(L10n.tr("转发（本机端口 → 远端）")) { newRule(.forward) }
+                            Button(L10n.tr("SOCKS 代理")) { newRule(.socks) }
                             Divider()
-                            Button("服务（把本机端口/目录/SSH 提供给别人）") { newRule(.serve) }
-                            Button("收件箱（接收文件）") { newRule(.recv) }
+                            Button(L10n.tr("服务（把本机端口/目录/SSH 提供给别人）")) { newRule(.serve) }
+                            Button(L10n.tr("收件箱（接收文件）")) { newRule(.recv) }
                             Divider()
-                            Button("远端…") { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
-                            Button("DNS 发布向导…") { showWizard = true }
-                        } label: { Label("新增", systemImage: "plus") }
+                            Button(L10n.tr("远端…")) { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
+                            Button(L10n.tr("DNS 发布向导…")) { showWizard = true }
+                        } label: { Label(L10n.tr("新增"), systemImage: "plus") }
                     }
                 }
             } detail: {
@@ -173,20 +173,27 @@ struct ManageView: View {
             if manager.binaryPath == nil { MissingTailcat() }
             if manager.runners.isEmpty && manager.remotes.isEmpty {
                 VStack(spacing: 8) {
-                    Text("从你想做的事开始").font(.title3)
-                    Text("连接对方：添加远端 → 配置转发 → 启动并访问本地地址。\n分享本机：新建服务或收件箱 → 启动 → 把地址发给对方。")
+                    Text(L10n.tr("从你想做的事开始")).font(.title3)
+                    Text(L10n.tr("连接对方：添加远端 → 配置转发 → 启动并访问本地地址。\n分享本机：新建服务或收件箱 → 启动 → 把地址发给对方。"))
                         .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    HStack {
-                        Button("连接别人的设备…") { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
-                        Button("共享本机服务…") { newRule(.serve) }
-                        Button("接收文件…") { newRule(.recv) }
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            Button(L10n.tr("连接别人的设备…")) { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
+                            Button(L10n.tr("共享本机服务…")) { newRule(.serve) }
+                            Button(L10n.tr("接收文件…")) { newRule(.recv) }
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Button(L10n.tr("连接别人的设备…")) { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
+                            Button(L10n.tr("共享本机服务…")) { newRule(.serve) }
+                            Button(L10n.tr("接收文件…")) { newRule(.recv) }
+                        }
                     }
                     .padding(.top, 4)
                 }
             } else {
-                Text("选择左侧项目，或点 + 新增转发、服务、收件箱或远端").foregroundStyle(.secondary)
+                Text(L10n.tr("选择左侧项目，或点 + 新增转发、服务、收件箱或远端")).foregroundStyle(.secondary)
             }
-            Button("查看使用说明") { navigation.selection = .help }.buttonStyle(.link)
+            Button(L10n.tr("查看使用说明")) { navigation.selection = .help }.buttonStyle(.link)
         }
         .frame(maxWidth: 480)
         .padding()
@@ -203,7 +210,7 @@ struct ManageView: View {
                 switch AddressTools.parseForward(clip) {
                 case .success(let imported):
                     imported.apply(to: &draft, remotes: manager.remotes)
-                    draft.name = "未命名"
+                    draft.name = L10n.tr("未命名")
                 case .failure(let error):
                     // Ordinary clipboard text is not an import attempt.
                     if clip.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("tailcat ") {
@@ -215,10 +222,10 @@ struct ManageView: View {
             draft.remoteID = remoteID
             draft.name = "SOCKS"
         case .serve:
-            draft.name = "本机服务"
+            draft.name = L10n.tr("本机服务")
             draft.autoRestart = true
         case .recv:
-            draft.name = "收件箱"
+            draft.name = L10n.tr("收件箱")
         }
         ruleDraft = RuleDraft(rule: draft, isNew: true, importError: importError)
     }
@@ -244,10 +251,10 @@ private struct SidebarRow: View {
             Text(runner.rule.name).lineLimit(1).help(runner.rule.name)
             Spacer()
             if runner.rule.needsAllowWarning {
-                Image(systemName: "exclamationmark.shield").foregroundStyle(.red).help("未设置允许列表")
+                Image(systemName: "exclamationmark.shield").foregroundStyle(.red).help(L10n.tr("未设置允许列表"))
             }
             if let ping = runner.lastPing {
-                Text(ping.isDirect ? "直连" : "中继")
+                Text(L10n.tr(ping.isDirect ? "直连" : "中继"))
                     .font(.caption2)
                     .foregroundStyle(ping.isDirect ? .green : .orange)
             }
