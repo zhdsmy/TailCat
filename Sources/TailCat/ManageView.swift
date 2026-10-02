@@ -9,6 +9,8 @@ enum SidebarItem: Hashable {
     case keys
     case contacts
     case help
+    case transfers
+    case backup
 }
 
 private struct RuleDraft: Identifiable {
@@ -30,6 +32,14 @@ struct ManageView: View {
     @ViewState private var ruleDraft: RuleDraft?
     @ViewState private var remoteDraft: RemoteDraft?
     @ViewState private var showWizard = false
+    @ViewState private var search = ""
+    @ViewState private var statusFilter = 0
+    @FocusState private var searchFocused: Bool
+
+    init(search: String = "", statusFilter: Int = 0) {
+        _search = State(initialValue: search)
+        _statusFilter = State(initialValue: statusFilter)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,44 +54,83 @@ struct ManageView: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
             NavigationSplitView {
-                List(selection: $navigation.selection) {
-                    ForEach(TunnelKind.displayOrder, id: \.self) { kind in
-                        let runners = manager.runners.filter { $0.rule.kind == kind }
-                        if !runners.isEmpty {
-                            Section(kind.label) {
-                                ForEach(runners) { runner in
-                                    SidebarRow(runner: runner).tag(SidebarItem.rule(runner.id))
+                VStack(spacing: 6) {
+                    HStack(spacing: 4) {
+                        TextField(L10n.tr("搜索规则和远端"), text: $search)
+                            .textFieldStyle(.roundedBorder).focused($searchFocused)
+                        if !search.isEmpty || statusFilter != 0 {
+                            Button { search = ""; statusFilter = 0 } label: { Image(systemName: "xmark.circle.fill") }
+                                .buttonStyle(.plain).help(L10n.tr("清除筛选")).accessibilityLabel(L10n.tr("清除筛选"))
+                        }
+                    }.padding(.horizontal, 10).padding(.top, 8)
+                    Picker(L10n.tr("状态筛选"), selection: $statusFilter) {
+                        Text(L10n.tr("全部")).tag(0)
+                        Text(L10n.tr("运行中")).tag(1)
+                        Text(L10n.tr("需要关注")).tag(2)
+                    }.pickerStyle(.menu).padding(.horizontal, 10)
+                    List(selection: $navigation.selection) {
+                        if (!search.isEmpty || statusFilter != 0),
+                           !manager.runners.contains(where: matches), !manager.remotes.contains(where: matches) {
+                            Text(L10n.tr("没有匹配项目")).foregroundStyle(.secondary)
+                        }
+                        ForEach(TunnelKind.displayOrder, id: \.self) { kind in
+                            let runners = manager.runners.filter { $0.rule.kind == kind && matches($0) }
+                            if !runners.isEmpty {
+                                Section(kind.label) {
+                                    ForEach(runners) { runner in
+                                        SidebarRow(runner: runner).tag(SidebarItem.rule(runner.id))
+                                            .contextMenu {
+                                                Button(runner.state.isActive ? L10n.tr("停止") : L10n.tr("启动")) { manager.toggle(id: runner.id) }
+                                                Button(L10n.tr("编辑")) { ruleDraft = RuleDraft(rule: runner.rule, isNew: false) }
+                                                Button(L10n.tr("复制为新规则…")) { ruleDraft = RuleDraft(rule: runner.rule.duplicate(), isNew: true) }
+                                            }
+                                    }
                                 }
                             }
                         }
-                    }
-                    Section(L10n.tr("远端")) {
-                        ForEach(manager.remotes) { remote in
-                            HStack {
-                                Label(remote.name, systemImage: "desktopcomputer")
-                                Spacer()
-                                RemoteStatusDot(status: manager.remotePings[remote.id])
-                            }
-                            .tag(SidebarItem.remote(remote.id))
-                            .help(L10n.tr("%@\n拖入文件即可发送到该远端", remote.name))
-                            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                                loadURLs(providers) { FileSender.send($0, to: remote, using: manager.cli) }
-                                return true
+                        Section(L10n.tr("远端")) {
+                            ForEach(manager.remotes.filter { matches($0) }) { remote in
+                                HStack {
+                                    Label(remote.name, systemImage: "desktopcomputer")
+                                    Spacer()
+                                    RemoteStatusDot(status: manager.remotePings[remote.id])
+                                }
+                                .tag(SidebarItem.remote(remote.id))
+                                .contextMenu {
+                                    Button(L10n.tr("编辑")) { remoteDraft = RemoteDraft(remote: remote, isNew: false) }
+                                    Button(L10n.tr("测试连接")) { Task { await manager.pingRemote(id: remote.id) } }
+                                    Button(L10n.tr("打开网页")) { openWebsite(remoteID: remote.id) }
+                                    Button(L10n.tr("新建转发…")) { newRule(.forward, remoteID: remote.id) }
+                                }
+                                .help(L10n.tr("%@\n拖入文件即可发送到该远端", remote.name))
+                                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                                    loadURLs(providers) { FileSender.send($0, to: remote, using: manager) }
+                                    return true
+                                }
                             }
                         }
+                        Section(L10n.tr("工具")) {
+                            Label(L10n.tr("文件传输"), systemImage: "arrow.up.arrow.down").tag(SidebarItem.transfers)
+                            Label(L10n.tr("配置备份"), systemImage: "externaldrive").tag(SidebarItem.backup)
+                            Label(L10n.tr("密钥"), systemImage: "key").tag(SidebarItem.keys)
+                            Label(L10n.tr("通讯录"), systemImage: "person.2").tag(SidebarItem.contacts)
+                            Label(L10n.tr("使用说明"), systemImage: "questionmark.circle").tag(SidebarItem.help)
+                        }
                     }
-                    Section(L10n.tr("工具")) {
-                        Label(L10n.tr("密钥"), systemImage: "key").tag(SidebarItem.keys)
-                        Label(L10n.tr("通讯录"), systemImage: "person.2").tag(SidebarItem.contacts)
-                        Label(L10n.tr("使用说明"), systemImage: "questionmark.circle").tag(SidebarItem.help)
-                    }
+                    .listStyle(.sidebar)
                 }
-                .listStyle(.sidebar)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230)
                 .background(SplitSeamAlign())
                 .toolbar {
                     ToolbarItem {
+                        Button { searchFocused = true } label: { Image(systemName: "magnifyingglass") }
+                            .keyboardShortcut("f", modifiers: .command)
+                            .help(L10n.tr("搜索规则和远端")).accessibilityLabel(L10n.tr("搜索规则和远端"))
+                    }
+                    ToolbarItem {
                         Menu {
+                            presetButtons
+                            Divider()
                             Button(L10n.tr("转发（本机端口 → 远端）")) { newRule(.forward) }
                             Button(L10n.tr("SOCKS 代理")) { newRule(.socks) }
                             Divider()
@@ -133,6 +182,10 @@ struct ManageView: View {
 
     @ViewBuilder private var detail: some View {
         switch navigation.selection {
+        case .backup:
+            BackupView()
+        case .transfers:
+            TransfersView()
         case .rule(let id):
             if let runner = manager.runner(id: id) {
                 RuleDetail(runner: runner,
@@ -179,13 +232,13 @@ struct ManageView: View {
                     ViewThatFits(in: .horizontal) {
                         HStack {
                             Button(L10n.tr("连接别人的设备…")) { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
-                            Button(L10n.tr("共享本机服务…")) { newRule(.serve) }
-                            Button(L10n.tr("接收文件…")) { newRule(.recv) }
+                            Menu(L10n.tr("共享本机服务…")) { presetButtons }
+                            Button(L10n.tr("接收文件…")) { newPreset(.inbox) }
                         }
                         VStack(alignment: .leading, spacing: 6) {
                             Button(L10n.tr("连接别人的设备…")) { remoteDraft = RemoteDraft(remote: Remote(), isNew: true) }
-                            Button(L10n.tr("共享本机服务…")) { newRule(.serve) }
-                            Button(L10n.tr("接收文件…")) { newRule(.recv) }
+                            Menu(L10n.tr("共享本机服务…")) { presetButtons }
+                            Button(L10n.tr("接收文件…")) { newPreset(.inbox) }
                         }
                     }
                     .padding(.top, 4)
@@ -197,6 +250,57 @@ struct ManageView: View {
         }
         .frame(maxWidth: 480)
         .padding()
+    }
+
+    private func matches(_ runner: TunnelRunner) -> Bool {
+        guard search.isEmpty || runner.rule.name.localizedCaseInsensitiveContains(search) else { return false }
+        switch statusFilter {
+        case 1: return runner.state.isActive
+        case 2:
+            if case .failed = runner.state { return true }
+            if case .reconnecting = runner.state { return true }
+            return runner.rule.needsAllowWarning
+        default: return true
+        }
+    }
+
+    private func matches(_ remote: Remote) -> Bool {
+        guard search.isEmpty || remote.name.localizedCaseInsensitiveContains(search) else { return false }
+        switch statusFilter {
+        case 1: return manager.remotePings[remote.id]?.result != nil
+        case 2: return manager.remotePings[remote.id] != nil && manager.remotePings[remote.id]?.result == nil
+        default: return true
+        }
+    }
+
+    @ViewBuilder private var presetButtons: some View {
+        Button(L10n.tr("访问远端网页…")) { newPreset(.webpage) }
+        Button(L10n.tr("共享本机网页…")) { newPreset(.sharedWeb) }
+        Button(L10n.tr("共享目录…")) { newPreset(.sharedFolder) }
+        Button(L10n.tr("共享 SSH…")) { newPreset(.ssh) }
+        Button(L10n.tr("接收文件…")) { newPreset(.inbox) }
+    }
+
+    private enum Preset { case webpage, sharedWeb, sharedFolder, ssh, inbox }
+
+    private func newPreset(_ preset: Preset) {
+        var rule: TunnelRule
+        switch preset {
+        case .webpage:
+            rule = TunnelRule(name: L10n.tr("访问远端网页"), remoteID: manager.remotes.first?.id,
+                              mappings: ["0:80"], openBrowser: true)
+        case .sharedWeb:
+            rule = TunnelRule(name: L10n.tr("共享本机网页"), kind: .serve, services: ["8080"])
+        case .sharedFolder:
+            guard let url = Panels.chooseDirectory(message: L10n.tr("选择要共享的目录")) else { return }
+            rule = TunnelRule(name: L10n.tr("共享目录"), kind: .serve, filesDir: url.path, filesMode: .ro)
+        case .ssh:
+            rule = TunnelRule(name: "SSH", kind: .serve, services: ["ssh"])
+        case .inbox:
+            guard let url = Panels.chooseDirectory(message: L10n.tr("选择接收文件的目录")) else { return }
+            rule = TunnelRule(name: L10n.tr("收件箱"), kind: .recv, recvDir: url.path)
+        }
+        ruleDraft = RuleDraft(rule: rule, isNew: true)
     }
 
     private func newRule(_ kind: TunnelKind, remoteID: UUID? = nil) {

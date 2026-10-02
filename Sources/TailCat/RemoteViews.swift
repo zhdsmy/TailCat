@@ -15,8 +15,8 @@ struct RemoteDetail: View {
     let onBrowse: () -> Void
 
     @ViewState private var directTimedOut = false
-    @ViewState private var sshPort = ""
     @ViewState private var sshError: String?
+    @ViewState private var showCommand = false
     @ViewState private var confirmDelete = false
     @ViewState private var deleteError: String?
 
@@ -43,7 +43,7 @@ struct RemoteDetail: View {
                 connectivity
                 rulesBox
                 sshBox
-                FileBrowser(identity: remote.identity).id(remote.id)
+                FileBrowser(identity: remote.identity, remote: remote).id(remote.id)
                 PerfPanel(identity: remote.identity).id(remote.id)
             }
             .padding()
@@ -53,6 +53,7 @@ struct RemoteDetail: View {
             let stale = manager.remotePings[remote.id].map { $0.at.timeIntervalSinceNow < -300 } ?? true
             if stale { await manager.pingRemote(id: remote.id) }
         }
+        .sheet(isPresented: $showCommand) { TerminalCommandSheet(remote: remote) }
         .confirmationDialog(L10n.tr("删除远端 %@？", remote.name), isPresented: $confirmDelete) {
             Button(L10n.tr("删除"), role: .destructive) {
                 deleteError = nil
@@ -80,7 +81,7 @@ struct RemoteDetail: View {
             }
             CopyableText(text: remote.address, font: .callout.monospaced(), secret: true,
                          copyLabel: L10n.tr("复制完整地址"))
-            Text(L10n.tr("“打开网页”访问远端 80 端口；其他端口请新建转发。"))
+            Text(L10n.tr("“打开网页”访问远端 %@ 端口，可在连接设置中修改。", String(remote.webPort)))
                 .font(.caption).foregroundStyle(.secondary)
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 16) {
@@ -106,7 +107,7 @@ struct RemoteDetail: View {
     @ViewBuilder private var actions: some View {
         HStack(spacing: 8) {
             Button(L10n.tr("打开网页"), action: onBrowse)
-                .help(L10n.tr("打开远端 80 端口；其他端口请新建转发。本地端口会自动选择空闲端口。"))
+                .help(L10n.tr("本地端口会自动选择空闲端口。"))
                 .fixedSize()
             Button(L10n.tr("编辑"), action: onEdit).fixedSize()
             let inUse = !manager.rules(usingRemote: remote.id).isEmpty
@@ -186,6 +187,15 @@ struct RemoteDetail: View {
                         probeActions(pinging: pinging)
                     }
                 }
+                if let error = manager.remoteProbeErrors[remote.id] {
+                    Text(error.message).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                    Text(error.recoverySuggestion).font(.caption).foregroundStyle(.secondary)
+                    if error.needsBinaryCheck {
+                        Button(L10n.tr("重新检测")) { Task { await manager.refreshTailcatInfo() } }
+                    } else {
+                        Button(L10n.tr("编辑远端"), action: onEdit).buttonStyle(.link)
+                    }
+                }
                 if directTimedOut {
                     Text(L10n.tr("等待结束，未测得直连；超时不代表远端离线，中继仍可使用。"))
                         .font(.caption).foregroundStyle(.secondary)
@@ -225,6 +235,7 @@ struct RemoteDetail: View {
                     }
                 }
                 if let sshError { Text(sshError).font(.caption).foregroundStyle(.red) }
+                Button(L10n.tr("运行 SSH / SOCKS 命令…")) { showCommand = true }.buttonStyle(.link)
                 Text(L10n.tr("需要对方开放 tailcat 的 SSH 服务，或开放运行系统 sshd 的端口；登录仍需相应的 SSH 授权。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -233,8 +244,11 @@ struct RemoteDetail: View {
     }
 
     private var sshPortField: some View {
-        TextField(L10n.tr("端口（默认 22，经出口节点可填 ip:port）"), text: $sshPort)
-            .frame(maxWidth: 260)
+        HStack {
+            Text(L10n.tr("SSH 端口：%@", remote.sshPort.isEmpty ? "22" : remote.sshPort))
+                .font(.callout.monospaced()).lineLimit(2)
+            Button(L10n.tr("连接设置…"), action: onEdit).buttonStyle(.link)
+        }
     }
 
     private var sshActions: some View {
@@ -242,8 +256,8 @@ struct RemoteDetail: View {
             Button(L10n.tr("打开 SSH…")) { openSSH() }
                 .help(L10n.tr("在终端中连接这个远端的 SSH 服务")).fixedSize()
             CopyButton(text: sshCommand(), label: L10n.tr("复制命令"), iconOnly: false)
-                .disabled(!SSHLauncher.isValidPort(sshPort))
-                .help(L10n.tr(SSHLauncher.isValidPort(sshPort) ? "复制 tailcat SSH 命令" : "端口格式不对"))
+                .disabled(!SSHLauncher.isValidPort(remote.sshPort))
+                .help(L10n.tr(SSHLauncher.isValidPort(remote.sshPort) ? "复制 tailcat SSH 命令" : "端口格式不对"))
         }
     }
 
@@ -254,13 +268,13 @@ struct RemoteDetail: View {
     }
 
     private func sshArguments() -> [String]? {
-        guard SSHLauncher.isValidPort(sshPort) else { sshError = L10n.tr("端口格式不对"); return nil }
+        guard SSHLauncher.isValidPort(remote.sshPort) else { sshError = L10n.tr("端口格式不对"); return nil }
         sshError = nil
-        return SSHLauncher.arguments(identity: remote.identity, user: remote.sshUser, port: sshPort)
+        return SSHLauncher.arguments(identity: remote.identity, user: remote.sshUser, port: remote.sshPort)
     }
 
     private func sshCommand() -> String {
-        (["tailcat"] + SSHLauncher.arguments(identity: remote.identity, user: remote.sshUser, port: sshPort))
+        (["tailcat"] + SSHLauncher.arguments(identity: remote.identity, user: remote.sshUser, port: remote.sshPort))
             .map(ShellQuote.quote).joined(separator: " ")
     }
 
@@ -300,30 +314,28 @@ struct FileBrowser: View {
     @ViewState private var entries: [RemoteFileEntry]?
     @ViewState private var loading = false
     @ViewState private var error: String?
-    @ViewState private var transfer: String?
-    @ViewState private var transferTask: Task<Void, Never>?
-    private let transferRunning: Bool
+    let remote: Remote
+    @EnvironmentObject var navigation: Navigation
     @ViewState private var dropTargeted = false
     @ViewState private var preserveFileMetadata = false
+    @ViewState private var downloadDirectory = false
     @ViewState var guidanceExpanded = false
 
-    init(identity: ClientIdentity, path: String = ".", entries: [RemoteFileEntry]? = nil,
-         loading: Bool = false, error: String? = nil, transfer: String? = nil,
-         transferRunning: Bool = false, guidanceExpanded: Bool = false) {
+    init(identity: ClientIdentity, remote: Remote? = nil, path: String = ".", entries: [RemoteFileEntry]? = nil,
+         loading: Bool = false, error: String? = nil, guidanceExpanded: Bool = false) {
         self.identity = identity
         _path = State(initialValue: path)
         _entries = State(initialValue: entries)
         _loading = State(initialValue: loading)
         _error = State(initialValue: error)
-        _transfer = State(initialValue: transfer)
-        _transferTask = State(initialValue: nil)
-        self.transferRunning = transferRunning
+        self.remote = remote ?? Remote(name: L10n.tr("远端"), address: identity.address, key: identity.key)
         _dropTargeted = State(initialValue: false)
         _preserveFileMetadata = State(initialValue: false)
         _guidanceExpanded = State(initialValue: guidanceExpanded)
     }
 
-    private var isTransferring: Bool { transferRunning || transferTask != nil }
+    private var jobs: [FileTransfer] { manager.transfers.items.filter { $0.remote.id == remote.id } }
+    private var isTransferring: Bool { jobs.contains { $0.state.isActive } }
 
     var body: some View {
         GroupBox(L10n.tr("文件")) {
@@ -343,17 +355,16 @@ struct FileBrowser: View {
                     .disabled(isTransferring)
                 if loading { ProgressView().controlSize(.small) }
                 if let error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
-                if let transfer {
-                    HStack {
-                        Text(transfer).font(.caption)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if isTransferring {
-                            ProgressView().controlSize(.small)
-                            Button(L10n.tr("取消")) { transferTask?.cancel() }.buttonStyle(.link)
-                                .fixedSize()
-                        }
-                    }
+                if remote.filePort != 22 {
+                    Text(L10n.tr("文件端口为 %@。当前 tailcat ls 仅支持 22 端口；可直接指定路径传输。", String(remote.filePort)))
+                        .font(.caption).foregroundStyle(.secondary)
+                    TextField(L10n.tr("远端路径"), text: $path)
+                    Toggle(L10n.tr("下载目标是目录"), isOn: $downloadDirectory)
+                    Button(L10n.tr("按路径下载…")) { downloadPath() }.disabled(isTransferring || path.isEmpty)
+                }
+                ForEach(Array(jobs.prefix(2))) { TransferRow(item: $0) }
+                if !jobs.isEmpty {
+                    Button(L10n.tr("查看所有传输")) { navigation.selection = .transfers }.buttonStyle(.link)
                 }
                 if let entries {
                     if entries.isEmpty { Text(L10n.tr("空目录")).foregroundStyle(.secondary) }
@@ -391,6 +402,9 @@ struct FileBrowser: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(4)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: dropTargeted ? 2 : 0))
+            .onChange(of: jobs.first?.state) { state in
+                if state == .succeeded, entries != nil { navigate(path) }
+            }
             .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
                 loadURLs(providers) { upload($0) }
                 return true
@@ -413,7 +427,7 @@ struct FileBrowser: View {
     private var listingActions: some View {
         HStack(spacing: 8) {
             Button(L10n.tr(entries == nil ? "列出文件" : "刷新")) { navigate(path) }
-                .disabled(loading).fixedSize()
+                .disabled(loading || remote.filePort != 22).fixedSize()
             Button(L10n.tr("发送文件…")) { upload(Panels.chooseFiles(message: L10n.tr("选择要发送到远端的文件或目录"))) }
                 .disabled(isTransferring).fixedSize()
         }
@@ -436,48 +450,28 @@ struct FileBrowser: View {
 
     private func upload(_ urls: [URL]) {
         guard !urls.isEmpty, !isTransferring else { return }
-        let target = entries == nil ? "" : path
-        let preserve = preserveFileMetadata
-        transfer = L10n.tr("正在发送 %d 项…", urls.count)
-        transferTask = Task {
-            let result = await manager.cli.upload(identity, files: urls, remotePath: target, preserve: preserve)
-            switch result {
-            case .success: transfer = L10n.tr("已发送 %d 项", urls.count)
-            case .failure(let e): transfer = Task.isCancelled ? L10n.tr("已取消") : L10n.tr("发送失败：%@", e.message)
-            }
-            transferTask = nil
-            if case .success = result, entries != nil { navigate(path) }
-        }
+        let target = remote.filePort != 22 || entries != nil ? path : ""
+        manager.transfers.start(remote: remote, operation: .upload(files: urls, path: target), preserve: preserveFileMetadata)
     }
 
     private func download(_ entry: RemoteFileEntry) {
-        guard let dir = Panels.chooseDirectory(message: L10n.tr("下载 %@ 到…", entry.name), prompt: L10n.tr("下载")) else { return }
-        let preserve = preserveFileMetadata
-        transfer = L10n.tr("正在下载 %@…", entry.name)
-        transferTask = Task {
-            let result = await manager.cli.download(identity, remotePath: FileListing.join(path, entry.name),
-                                                    isDirectory: entry.isDirectory, to: dir, preserve: preserve)
-            switch result {
-            case .success: transfer = L10n.tr("已下载到 %@", dir.path)
-            case .failure(let e): transfer = Task.isCancelled ? L10n.tr("已取消") : L10n.tr("下载失败：%@", e.message)
-            }
-            transferTask = nil
-        }
+        startDownload(path: FileListing.join(path, entry.name), isDirectory: entry.isDirectory)
+    }
+
+    private func downloadPath() { startDownload(path: path, isDirectory: downloadDirectory) }
+
+    private func startDownload(path: String, isDirectory: Bool) {
+        guard let dir = Panels.chooseDirectory(message: L10n.tr("下载 %@ 到…", path), prompt: L10n.tr("下载")) else { return }
+        manager.transfers.start(remote: remote, operation: .download(path: path, isDirectory: isDirectory, destination: dir),
+                               preserve: preserveFileMetadata)
     }
 }
 
-/// Fire-and-forget upload for the menu and sidebar drop targets; the outcome arrives as a notification.
 @MainActor
 enum FileSender {
-    static func send(_ urls: [URL], to remote: Remote, using cli: TailcatCLI) {
+    static func send(_ urls: [URL], to remote: Remote, using manager: RuleManager) {
         guard !urls.isEmpty else { return }
-        Task {
-            let label = urls.count == 1 ? urls[0].lastPathComponent : L10n.tr("%d 项", urls.count)
-            switch await cli.upload(remote.identity, files: urls, remotePath: "") {
-            case .success: AppNotifications.post(title: remote.name, body: L10n.tr("已发送 %@", label))
-            case .failure(let e): AppNotifications.post(title: remote.name, body: L10n.tr("发送 %@ 失败：%@", label, e.message))
-            }
-        }
+        manager.transfers.start(remote: remote, operation: .upload(files: urls, path: ""))
     }
 }
 
@@ -694,9 +688,14 @@ struct RemoteEditor: View {
     let onSave: (Remote) -> Bool
     @ViewState private var issues: [RemoteIssue] = []
     @ViewState private var saveError: String?
+    @ViewState private var creatingKey = false
+    @ViewState private var webPortText: String
+    @ViewState private var filePortText: String
 
     init(remote: Remote, isNew: Bool, saveError: String? = nil, onSave: @escaping (Remote) -> Bool) {
         _remote = State(initialValue: remote)
+        _webPortText = State(initialValue: String(remote.webPort))
+        _filePortText = State(initialValue: String(remote.filePort))
         _saveError = State(initialValue: saveError)
         self.isNew = isNew
         self.onSave = onSave
@@ -721,9 +720,15 @@ struct RemoteEditor: View {
                     Text(L10n.tr("默认（client-default，未保存则每次临时）")).tag("")
                     ForEach(clientKeys, id: \.self) { Text($0).tag($0) }
                 }
+                Button(L10n.tr("创建客户端身份…")) { creatingKey = true }
                 Text(L10n.tr("对方限制客户端时，请选择已保存的客户端密钥，把它的 nodekey: 公钥交给对方加入允许列表（在“密钥”里复制）。SSH 登录使用单独的 SSH 公钥。"))
                     .font(.caption).foregroundStyle(.secondary)
                 TextField(L10n.tr("SSH 用户名"), text: $remote.sshUser, prompt: Text(L10n.tr("可选")))
+                TextField(L10n.tr("SSH 端口或出口地址"), text: $remote.sshPort, prompt: Text("22 / 192.168.1.10:22"))
+                TextField(L10n.tr("网页端口"), text: $webPortText)
+                TextField(L10n.tr("文件端口"), text: $filePortText)
+                Text(L10n.tr("文件端口用于上传和下载。当前 tailcat ls 仅支持 22 端口。"))
+                    .font(.caption).foregroundStyle(.secondary)
             }
             .formStyle(.grouped)
             if !issues.isEmpty {
@@ -747,6 +752,7 @@ struct RemoteEditor: View {
         }
         .padding()
         .frame(width: 520)
+        .sheet(isPresented: $creatingKey) { KeyCreateSheet(role: .client) { remote.key = $0 } }
     }
 
     private func save() {
@@ -755,6 +761,8 @@ struct RemoteEditor: View {
         c.name = c.name.trimmingCharacters(in: .whitespaces)
         c.address = c.address.trimmingCharacters(in: .whitespacesAndNewlines)
         c.sshUser = c.sshUser.trimmingCharacters(in: .whitespaces)
+        c.webPort = Int(webPortText.trimmingCharacters(in: .whitespaces)) ?? 0
+        c.filePort = Int(filePortText.trimmingCharacters(in: .whitespaces)) ?? 0
         issues = c.validate()
         guard issues.isEmpty else { return }
         guard onSave(c) else {

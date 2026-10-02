@@ -18,6 +18,13 @@ struct MenuContent: View {
             }
             .frame(maxHeight: 480)
             Divider().padding(.vertical, 4)
+            Button {
+                show(.transfers)
+            } label: {
+                Label(manager.transfers.activeCount > 0
+                      ? L10n.tr("传输中：%d 项", manager.transfers.activeCount) : L10n.tr("文件传输"),
+                      systemImage: "arrow.up.arrow.down")
+            }.buttonStyle(.link).padding(.horizontal, 12).padding(.bottom, 8)
             VStack(spacing: 8) {
                 HStack {
                     Button(L10n.tr("管理…")) { show(nil) }
@@ -28,7 +35,7 @@ struct MenuContent: View {
                                 Button(remote.name) {
                                     NSApp.activate(ignoringOtherApps: true)
                                     FileSender.send(Panels.chooseFiles(message: L10n.tr("选择要发送到 %@ 的文件", remote.name)),
-                                                    to: remote, using: manager.cli)
+                                                    to: remote, using: manager)
                                 }
                             }
                         }

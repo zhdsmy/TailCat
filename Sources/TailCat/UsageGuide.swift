@@ -26,6 +26,8 @@ struct UsageGuide: View {
                 }
                 .pickerStyle(.segmented)
                 content
+                Text(L10n.tr("用 ⌘F 搜索规则和远端。新增菜单提供任务预设；编辑器支持保存并启动，也可直接创建身份和联系人。换机前可在“配置备份”导出配置，私钥需要另外配置。"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: 640, alignment: .leading)
             .padding(24)
@@ -40,7 +42,7 @@ struct UsageGuide: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(L10n.tr("1. 向对方索取 tc 地址或已发布的 DNS 名称，添加为“远端”。地址等同访问凭据，请只发给信任的人。"))
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(L10n.tr("2. 网页使用 80 端口时，在远端详情点“打开网页”；其他端口请选择“新建转发”。例如 18080:8080 会把本机 18080 转到远端 8080。"))
+                    Text(L10n.tr("2. 在远端的连接设置中保存网页端口，再点“打开网页”。需要多个映射时新建转发，可分栏输入或填写 18080:8080。"))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(L10n.tr("3. 启动转发后，访问详情中的本地地址。SSH 可在远端详情点“打开 SSH”，对方需要已开启相应服务。"))
                         .fixedSize(horizontal: false, vertical: true)
@@ -71,6 +73,8 @@ struct UsageGuide: View {
             GroupBox(L10n.tr("发送文件")) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(L10n.tr("将文件拖到左侧远端，或在远端详情点“发送文件”。对方需要启动收件箱或允许写入的文件服务；发送目录时，对方也需允许接收目录。"))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(L10n.tr("在“文件传输”查看所有任务、取消或重试；切换页面不会中断传输。自定义文件端口可在连接设置中保存，并按路径传输。"))
                         .fixedSize(horizontal: false, vertical: true)
                     Text(L10n.tr("浏览和下载还要求对方开放可读取的文件服务。只能接收文件的收件箱不会提供文件列表；列表失败不一定表示无法发送。"))
                         .fixedSize(horizontal: false, vertical: true)

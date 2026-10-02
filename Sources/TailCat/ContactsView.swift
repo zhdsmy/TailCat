@@ -6,6 +6,7 @@ struct ContactsView: View {
     @EnvironmentObject var manager: RuleManager
     @ViewState private var editing: Contact?
     @ViewState private var isNew = false
+    @ViewState private var search = ""
 
     var body: some View {
         ScrollView {
@@ -26,7 +27,8 @@ struct ContactsView: View {
                 if manager.contacts.isEmpty {
                     Text(L10n.tr("还没有联系人。")).foregroundStyle(.secondary)
                 }
-                ForEach(manager.contacts) { contact in
+                TextField(L10n.tr("搜索联系人"), text: $search).textFieldStyle(.roundedBorder)
+                ForEach(manager.contacts.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { contact in
                     GroupBox {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {

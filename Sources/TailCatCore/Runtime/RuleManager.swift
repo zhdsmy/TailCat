@@ -33,6 +33,7 @@ public final class RuleManager: ObservableObject {
     @Published public private(set) var inbox: [UUID: [String]] = [:]
     @Published public private(set) var remotePings: [UUID: RemotePing] = [:]
     @Published public private(set) var pingingRemotes: Set<UUID> = []
+    @Published public private(set) var remoteProbeErrors: [UUID: CLIError] = [:]
 
     /// (title, body) for failure / health alerts.
     public var onNotify: ((String, String) -> Void)?
@@ -40,6 +41,7 @@ public final class RuleManager: ObservableObject {
     public var onFilesReceived: ((TunnelRule, [URL]) -> Void)?
 
     public let cli: TailcatCLI
+    public let transfers: TransferManager
     public let remoteDirectory = RemoteDirectory()
     private let store: RuleStore
     private let remoteStore: ListStore<Remote>
@@ -53,6 +55,7 @@ public final class RuleManager: ObservableObject {
     private var livePIDs: [String: PIDTracker.Identity] = [:]
     private var storeErrors: [URL: String] = [:]
     private var infoGeneration = 0
+    private var transferObserver: AnyCancellable?
 
     public init(
         store: RuleStore = RuleStore(directory: RuleStore.defaultDirectory()),
@@ -63,11 +66,14 @@ public final class RuleManager: ObservableObject {
         self.store = store
         self.locator = locator
         self.cli = TailcatCLI(locator: locator, settings: settings)
+        self.transfers = TransferManager(cli: self.cli)
         self.pids = PIDTracker(directory: store.directory)
         remoteStore = ListStore(fileURL: store.directory.appendingPathComponent("remotes.json"))
         contactStore = ListStore(fileURL: store.directory.appendingPathComponent("contacts.json"))
         keyMetaStore = ListStore(fileURL: store.directory.appendingPathComponent("key-meta.json"))
         self.makeConfig = makeConfig ?? { RunnerConfig.live(locator: locator, remotes: $0, settings: settings) }
+        transferObserver = transfers.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        transfers.onNotify = { [weak self] title, body in self?.onNotify?(title, body) }
     }
 
     public var rules: [TunnelRule] { runners.map(\.rule) }
@@ -105,6 +111,7 @@ public final class RuleManager: ObservableObject {
     }
 
     public func shutdown() {
+        transfers.shutdown()
         for watcher in watchers.values { watcher.stop() }
         for runner in runners { runner.terminateSynchronously() }
         pids.save([:])
@@ -175,12 +182,13 @@ public final class RuleManager: ObservableObject {
     /// listener or starts the rule, whose --open-browser opens the page once it is ready.
     public func websiteRule(for remoteID: UUID) -> TunnelRunner? {
         guard let remote = remote(id: remoteID) else { return nil }
+        let mapping = "0:\(remote.webPort)"
         if let runner = runners.first(where: {
             $0.rule.kind == .forward && $0.rule.remoteID == remoteID && $0.rule.bind == "127.0.0.1"
-                && $0.rule.cleanedMappings == ["0:80"] && $0.rule.openBrowser
+                && $0.rule.cleanedMappings == [mapping] && $0.rule.openBrowser
         }) { return runner }
         let rule = TunnelRule(name: L10n.tr("%@ · 网页", remote.name), remoteID: remoteID,
-                              mappings: ["0:80"], openBrowser: true)
+                              mappings: [mapping], openBrowser: true)
         return add(rule) ? runner(id: rule.id) : nil
     }
 
@@ -201,6 +209,37 @@ public final class RuleManager: ObservableObject {
 
     public func clearInbox(id: UUID) {
         inbox[id] = nil
+    }
+
+    public var configurationBackup: ConfigurationBackup {
+        ConfigurationBackup(rules: rules, remotes: remotes, contacts: contacts)
+    }
+
+    public func previewImport(_ backup: ConfigurationBackup) throws -> ConfigurationImport {
+        try ConfigurationImport(backup: backup, rules: rules, remotes: remotes, contacts: contacts)
+    }
+
+    public func importConfiguration(_ plan: ConfigurationImport) -> Bool {
+        guard rules == plan.originalRules, remotes == plan.originalRemotes, contacts == plan.originalContacts else {
+            setStoreError(L10n.tr("配置已变化，请重新预览后导入。"), for: store.fileURL)
+            return false
+        }
+        // Save dependencies first. A failed later write leaves recoverable added entries;
+        // a new preview deduplicates them, and no imported process starts during the merge.
+        if !plan.remotes.isEmpty {
+            guard persist(remotes + plan.remotes, to: remoteStore) else { return false }
+            remotes += plan.remotes
+            remoteDirectory.set(remotes)
+        }
+        if !plan.contacts.isEmpty {
+            guard persist(contacts + plan.contacts, to: contactStore) else { return false }
+            contacts += plan.contacts
+        }
+        if !plan.rules.isEmpty {
+            guard persist(rules + plan.rules) else { return false }
+            for rule in plan.rules { attach(rule) }
+        }
+        return true
     }
 
     // MARK: Remotes
@@ -231,6 +270,7 @@ public final class RuleManager: ObservableObject {
         // Only address and key reach the tailcat command line.
         if let old, old.address != remote.address || old.key != remote.key {
             remotePings[remote.id] = nil
+            remoteProbeErrors[remote.id] = nil
             for runner in runners where runner.rule.remoteID == remote.id {
                 runner.restart(reason: L10n.tr("远端「%@」已修改", remote.name))
             }
@@ -245,6 +285,7 @@ public final class RuleManager: ObservableObject {
               persist(remotes.filter { $0.id != id }, to: remoteStore) else { return false }
         remotes.removeAll { $0.id == id }
         remotePings[id] = nil
+        remoteProbeErrors[id] = nil
         remoteDirectory.set(remotes)
         return true
     }
@@ -255,8 +296,12 @@ public final class RuleManager: ObservableObject {
     public func pingRemote(id: UUID, untilDirect: Bool = false) async -> PingResult? {
         guard let remote = remote(id: id), !pingingRemotes.contains(id) else { return nil }
         pingingRemotes.insert(id)
+        remoteProbeErrors[id] = nil
         defer { pingingRemotes.remove(id) }
-        let result = await cli.ping(remote.identity, untilDirect: untilDirect, timeoutSeconds: untilDirect ? 20 : 10)
+        let outcome = await cli.probe(remote.identity, untilDirect: untilDirect, timeoutSeconds: untilDirect ? 20 : 10)
+        guard self.remote(id: id)?.identity == remote.identity, !Task.isCancelled else { return nil }
+        let result = try? outcome.get()
+        if case .failure(let error) = outcome { remoteProbeErrors[id] = error }
         // A failed --until-direct wait says nothing about relayed reachability; keep the last status.
         if result != nil || !untilDirect { remotePings[id] = RemotePing(result: result) }
         return result
@@ -339,6 +384,7 @@ public final class RuleManager: ObservableObject {
         runner.onProbe = { [weak self, weak runner] result in
             guard let self, let rid = runner?.rule.remoteID else { return }
             self.remotePings[rid] = RemotePing(result: result)
+            if result != nil { self.remoteProbeErrors[rid] = nil }
         }
         runner.onServerAddress = { [weak self] _, address, savedKey in
             guard let savedKey else { return }
