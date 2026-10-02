@@ -33,7 +33,10 @@ public enum L10n {
         .flatMap(Bundle.init(url:)) ?? Bundle.module
     private static let bundles: [AppLanguage: Bundle] = {
         Dictionary(uniqueKeysWithValues: AppLanguage.allCases.filter { $0 != .system }.map { language in
-            guard let url = resources.url(forResource: language.rawValue, withExtension: "lproj"),
+            // SwiftPM's native backend lowercases locale folders; swiftbuild preserves their case.
+            guard let localization = resources.localizations.first(where: {
+                $0.caseInsensitiveCompare(language.rawValue) == .orderedSame
+            }), let url = resources.url(forResource: localization, withExtension: "lproj"),
                   let bundle = Bundle(url: url) else {
                 preconditionFailure("Missing localization resources: \(language.rawValue)")
             }
