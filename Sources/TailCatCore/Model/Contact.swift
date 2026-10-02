@@ -30,8 +30,8 @@ public enum KeyRole: String, Codable, Sendable {
 
     public var label: String {
         switch self {
-        case .server: return "服务端"
-        case .client: return "客户端"
+        case .server: return L10n.tr("服务端")
+        case .client: return L10n.tr("客户端")
         }
     }
 }

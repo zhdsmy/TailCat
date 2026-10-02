@@ -45,8 +45,8 @@ struct RuleDetail: View {
             }
             .padding()
         }
-        .confirmationDialog("删除 \(rule.name)？", isPresented: $confirmDelete) {
-            Button("删除", role: .destructive, action: onDelete)
+        .confirmationDialog(L10n.tr("删除 %@？", rule.name), isPresented: $confirmDelete) {
+            Button(L10n.tr("删除"), role: .destructive, action: onDelete)
         }
     }
 
@@ -76,7 +76,7 @@ struct RuleDetail: View {
                 }
             }
             if case .reconnecting(_, _, let reason) = runner.state {
-                Text("上次退出：\(Diagnostics.mask(reason))")
+                Text(L10n.tr("上次退出：%@", Diagnostics.mask(reason)))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
@@ -97,14 +97,14 @@ struct RuleDetail: View {
     }
 
     @ViewBuilder private var actionButtons: some View {
-        Button(runner.state.isActive ? "停止" : "启动") { manager.toggle(id: runner.id) }.fixedSize()
-        Button("编辑", action: onEdit).fixedSize()
+        Button(L10n.tr(runner.state.isActive ? "停止" : "启动")) { manager.toggle(id: runner.id) }.fixedSize()
+        Button(L10n.tr("编辑"), action: onEdit).fixedSize()
         Menu {
-            Button("复制为新规则…", action: onDuplicate)
-            Button("复制等价 CLI 命令") { Clipboard.copy(rule.cliCommand(remote: remote)) }
-            Button("复制诊断信息（地址已打码）") { Clipboard.copy(diagnostics()) }
+            Button(L10n.tr("复制为新规则…"), action: onDuplicate)
+            Button(L10n.tr("复制等价 CLI 命令")) { Clipboard.copy(rule.cliCommand(remote: remote)) }
+            Button(L10n.tr("复制诊断信息（地址已打码）")) { Clipboard.copy(diagnostics()) }
             Divider()
-            Button("删除…", role: .destructive) { confirmDelete = true }
+            Button(L10n.tr("删除…"), role: .destructive) { confirmDelete = true }
         } label: { Image(systemName: "ellipsis.circle") }
             .menuStyle(.borderlessButton).fixedSize()
     }
@@ -142,15 +142,15 @@ struct RuleDetail: View {
     private var badgeItems: [BadgeItem] {
         var items: [BadgeItem] = []
         if rule.needsAllowWarning {
-            items.append(BadgeItem(text: "未设置允许列表：任何拿到地址的人都能使用这些服务", color: .red,
+            items.append(BadgeItem(text: L10n.tr("未设置允许列表：任何拿到地址的人都能使用这些服务"), color: .red,
                                    icon: "exclamationmark.shield.fill"))
         }
         for w in runner.warnings { items.append(BadgeItem(text: w, color: .orange, icon: "exclamationmark.triangle.fill")) }
         if runner.serverIdentity == .ephemeral {
-            items.append(BadgeItem(text: "临时地址：进程重启后地址会变化", color: .blue, icon: "info.circle.fill"))
+            items.append(BadgeItem(text: L10n.tr("临时地址：进程重启后地址会变化"), color: .blue, icon: "info.circle.fill"))
         }
         if rule.kind.isClient, rule.remoteID != nil, remote == nil {
-            items.append(BadgeItem(text: "引用的远端已不存在，请编辑规则", color: .red, icon: "xmark.octagon.fill"))
+            items.append(BadgeItem(text: L10n.tr("引用的远端已不存在，请编辑规则"), color: .red, icon: "xmark.octagon.fill"))
         }
         return items
     }
@@ -173,7 +173,7 @@ struct RuleDetail: View {
                 .onChange(of: runner.log.count) { _ in proxy.scrollTo("end") }
             }
         } label: {
-            Text(runner.log.isEmpty ? "日志（暂无）" : "日志（\(runner.log.count) 行）")
+            Text(runner.log.isEmpty ? L10n.tr("日志（暂无）") : L10n.tr("日志（%d 行）", runner.log.count))
         }
         .onAppear { if runner.state.needsAttention { logExpanded = true } }
         .onChange(of: runner.state) { if $0.needsAttention { logExpanded = true } }
@@ -188,7 +188,7 @@ struct RuleDetail: View {
     // MARK: Client kinds
 
     private var connectionBox: some View {
-        GroupBox("连接探测") {
+        GroupBox(L10n.tr("连接探测")) {
             VStack(alignment: .leading, spacing: 6) {
                 ViewThatFits(in: .horizontal) {
                     HStack {
@@ -202,7 +202,7 @@ struct RuleDetail: View {
                     }
                 }
                 if remote != nil {
-                    Text("“已启动”表示本机规则在运行；探测成功不代表远端的具体服务可用。中继连接也可使用。")
+                    Text(L10n.tr("“已启动”表示本机规则在运行；探测成功不代表远端的具体服务可用。中继连接也可使用。"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -213,12 +213,12 @@ struct RuleDetail: View {
     @ViewBuilder private var connectionTarget: some View {
         if let remote {
             HStack(spacing: 6) {
-                Text("远端")
+                Text(L10n.tr("远端"))
                 Button(remote.name) { onShowRemote(remote.id) }
                     .buttonStyle(.link).lineLimit(2).help(remote.name)
             }
         } else {
-            Text("未指定出口远端：通过 <地址>.tailcat 主机名访问各服务端")
+            Text(L10n.tr("未指定出口远端：通过 <地址>.tailcat 主机名访问各服务端"))
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -226,13 +226,13 @@ struct RuleDetail: View {
     @ViewBuilder private var connectionActions: some View {
         if remote != nil {
             HStack(spacing: 8) {
-                Text(rule.healthCheck ? "定期探测已开启" : "定期探测已关闭")
+                Text(L10n.tr(rule.healthCheck ? "定期探测已开启" : "定期探测已关闭"))
                     .font(.caption).foregroundStyle(.secondary).fixedSize()
-                Button("测试连接") { Task { await runner.runPing() } }
+                Button(L10n.tr("测试连接")) { Task { await runner.runPing() } }
                     .disabled(runner.pingBusy).fixedSize()
-                Button("等待直连") { Task { await runner.runPing(untilDirect: true, timeoutSeconds: 20) } }
+                Button(L10n.tr("等待直连")) { Task { await runner.runPing(untilDirect: true, timeoutSeconds: 20) } }
                     .disabled(runner.pingBusy)
-                    .help("等待直连探测；超时不代表远端离线，中继仍可使用。")
+                    .help(L10n.tr("等待直连探测；超时不代表远端离线，中继仍可使用。"))
                     .fixedSize()
                 if runner.pingBusy { ProgressView().controlSize(.small) }
             }
@@ -240,13 +240,13 @@ struct RuleDetail: View {
     }
 
     private var forwardInfo: some View {
-        GroupBox("端口映射") {
+        GroupBox(L10n.tr("端口映射")) {
             VStack(alignment: .leading, spacing: 6) {
                 if runner.listeners.isEmpty {
                     ForEach(rule.cleanedMappings, id: \.self) { m in
                         Text(MappingSpec.parse(m)?.displayLabel ?? m)
                     }
-                    Text("监听 \(rule.bind)，启动后显示实际地址").font(.caption).foregroundStyle(.secondary)
+                    Text(L10n.tr("监听 %@，启动后显示实际地址", rule.bind)).font(.caption).foregroundStyle(.secondary)
                 } else {
                     ForEach(runner.listeners, id: \.self) { listener in
                         listenerRow(listener)
@@ -283,32 +283,32 @@ struct RuleDetail: View {
 
     @ViewBuilder private func listenerActions(_ listener: ListenerInfo) -> some View {
         HStack(spacing: 8) {
-            CopyButton(text: listener.hostPort, label: "复制", iconOnly: false)
-            Button("浏览器") {
+            CopyButton(text: listener.hostPort, label: L10n.tr("复制"), iconOnly: false)
+            Button(L10n.tr("浏览器")) {
                 if let url = URL(string: "http://\(listener.hostPort)") { NSWorkspace.shared.open(url) }
             }
             .fixedSize()
             if listener.target == "22" || listener.target.hasSuffix(":22") {
                 let user = remote?.sshUser ?? ""
                 CopyButton(text: "ssh -p \(listener.port) \(user.isEmpty ? "" : user + "@")\(listener.host)",
-                           label: "复制 SSH 命令", iconOnly: false)
+                           label: L10n.tr("复制 SSH 命令"), iconOnly: false)
             }
         }
     }
 
     private var socksInfo: some View {
-        GroupBox("SOCKS 代理") {
+        GroupBox(L10n.tr("SOCKS 代理")) {
             VStack(alignment: .leading, spacing: 8) {
                 if let socks = runner.socksAddress {
                     CopyableText(text: socks)
                     HStack {
-                        CopyButton(text: "export all_proxy=\(socks)", label: "复制 export all_proxy=…", iconOnly: false)
-                        CopyButton(text: "curl -x \(socks) http://server.tailcat/", label: "复制 curl 示例", iconOnly: false)
+                        CopyButton(text: "export all_proxy=\(socks)", label: L10n.tr("复制 export all_proxy=…"), iconOnly: false)
+                        CopyButton(text: "curl -x \(socks) http://server.tailcat/", label: L10n.tr("复制 curl 示例"), iconOnly: false)
                     }
                 } else {
-                    Text("监听 \(rule.socksListen)，启动后显示代理地址").foregroundStyle(.secondary)
+                    Text(L10n.tr("监听 %@，启动后显示代理地址", rule.socksListen)).foregroundStyle(.secondary)
                 }
-                Text("浏览器会把主机名转成小写，而 tc 地址区分大小写：浏览器里只能经出口远端上网或访问 server.tailcat。")
+                Text(L10n.tr("浏览器会把主机名转成小写，而 tc 地址区分大小写：浏览器里只能经出口远端上网或访问 server.tailcat。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -318,40 +318,40 @@ struct RuleDetail: View {
     // MARK: Server kinds
 
     private var serverAddressBox: some View {
-        GroupBox("本机地址") {
+        GroupBox(L10n.tr("本机地址")) {
             VStack(alignment: .leading, spacing: 8) {
                 if let address = runner.serverAddress {
                     HStack(alignment: .firstTextBaseline) {
                         CopyableText(text: address, font: .title3.monospaced(), lineLimit: 3, secret: true,
-                                     sharedReveal: $revealAddress, copyLabel: "复制完整地址")
+                                     sharedReveal: $revealAddress, copyLabel: L10n.tr("复制完整地址"))
                         Spacer()
                         Button { revealAddress.toggle() } label: {
-                            Label(revealAddress ? "隐藏地址" : "显示地址", systemImage: revealAddress ? "eye.slash" : "eye")
+                            Label(L10n.tr(revealAddress ? "隐藏地址" : "显示地址"), systemImage: revealAddress ? "eye.slash" : "eye")
                         }
                         .controlSize(.small)
                     }
                     switch runner.serverIdentity {
-                    case .saved(let name): Text("身份：已保存的服务端密钥「\(name)」").font(.caption).foregroundStyle(.secondary)
-                    case .ephemeral: Text("身份：临时服务端密钥（重启后地址会变化）").font(.caption).foregroundStyle(.secondary)
+                    case .saved(let name): Text(L10n.tr("身份：已保存的服务端密钥「%@」", name)).font(.caption).foregroundStyle(.secondary)
+                    case .ephemeral: Text(L10n.tr("身份：临时服务端密钥（重启后地址会变化）")).font(.caption).foregroundStyle(.secondary)
                     case nil: EmptyView()
                     }
-                    Text("长期分享或用于 DNS 时，建议固定中继区域。")
+                    Text(L10n.tr("长期分享或用于 DNS 时，建议固定中继区域。"))
                         .font(.caption).foregroundStyle(.secondary)
                     let commands = rule.peerCommands(serverAddress: address)
                     if !commands.isEmpty {
                         Divider()
-                        Text("给对方的命令").font(.caption).foregroundStyle(.secondary)
+                        Text(L10n.tr("给对方的命令")).font(.caption).foregroundStyle(.secondary)
                         ForEach(commands, id: \.self) { cmd in
                             CopyableText(text: cmd, font: .caption.monospaced(), lineLimit: 2,
                                          secret: true, sharedReveal: $revealAddress)
                         }
                     }
                 } else if !rule.key.isEmpty, rule.key != "new", let cached = manager.keyMeta(name: rule.key)?.address {
-                    Text("未运行。密钥「\(rule.key)」上次记录的地址：").foregroundStyle(.secondary)
+                    Text(L10n.tr("未运行。密钥「%@」上次记录的地址：", rule.key)).foregroundStyle(.secondary)
                     CopyableText(text: cached, font: .body.monospaced(), lineLimit: 2, secret: true,
-                                 copyLabel: "复制完整地址")
+                                 copyLabel: L10n.tr("复制完整地址"))
                 } else {
-                    Text(runner.state.isActive ? "等待服务端输出地址…" : "启动后显示地址").foregroundStyle(.secondary)
+                    Text(L10n.tr(runner.state.isActive ? "等待服务端输出地址…" : "启动后显示地址")).foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -359,33 +359,33 @@ struct RuleDetail: View {
     }
 
     private var serveInfo: some View {
-        GroupBox("服务") {
+        GroupBox(L10n.tr("服务")) {
             VStack(alignment: .leading, spacing: 4) {
                 let services = rule.cleanedServices
                 if !services.isEmpty {
-                    LabeledContent("服务项") {
+                    LabeledContent(L10n.tr("服务项")) {
                         Text(services.joined(separator: " ")).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 if !rule.filesDir.isEmpty {
-                    LabeledContent("共享目录") {
+                    LabeledContent(L10n.tr("共享目录")) {
                         HStack {
-                            Text("\(rule.filesDir)（\(rule.filesMode.label)）")
+                            Text("\(rule.filesDir) (\(rule.filesMode.label))")
                                 .lineLimit(1).truncationMode(.middle).help(rule.filesDir)
-                            Button("在 Finder 中显示") { Panels.revealInFinder(URL(fileURLWithPath: rule.filesDir)) }
+                            Button(L10n.tr("在 Finder 中显示")) { Panels.revealInFinder(URL(fileURLWithPath: rule.filesDir)) }
                                 .buttonStyle(.link).fixedSize()
                         }
                     }
                 }
                 if !rule.cleanedExecArgs.isEmpty {
-                    LabeledContent(rule.cleanedServices.contains("ssh") ? "SSH 强制命令" : "exec 命令") {
+                    LabeledContent(L10n.tr(rule.cleanedServices.contains("ssh") ? "SSH 强制命令" : "exec 命令")) {
                         Text(rule.cleanedExecArgs.joined(separator: " "))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 let allow = TunnelRule.allowEntries(rule.allow)
-                LabeledContent("允许的客户端") {
-                    Text(allow.isEmpty ? "所有人" : allow.map { manager.contactName(forPublicKey: $0) ?? short($0) }.joined(separator: "、"))
+                LabeledContent(L10n.tr("允许的客户端")) {
+                    Text(allow.isEmpty ? L10n.tr("所有人") : allow.map { manager.contactName(forPublicKey: $0) ?? short($0) }.joined(separator: L10n.tr("、")))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -395,12 +395,12 @@ struct RuleDetail: View {
     }
 
     private var peersBox: some View {
-        GroupBox("在线客户端（实验性）") {
+        GroupBox(L10n.tr("在线客户端（实验性）")) {
             VStack(alignment: .leading, spacing: 4) {
                 if !(showOnlineClients ?? AppSettings().statusLoopEnabled) {
-                    Text("在设置里开启“服务端显示在线客户端”后重启本服务即可显示。").font(.caption).foregroundStyle(.secondary)
+                    Text(L10n.tr("在设置里开启“服务端显示在线客户端”后重启本服务即可显示。")).font(.caption).foregroundStyle(.secondary)
                 } else if runner.peers.isEmpty {
-                    Text(runner.state == .running ? "暂无客户端（每 5 秒刷新）" : "未运行").foregroundStyle(.secondary)
+                    Text(L10n.tr(runner.state == .running ? "暂无客户端（每 5 秒刷新）" : "未运行")).foregroundStyle(.secondary)
                 } else {
                     ForEach(runner.peers) { peer in peerRow(peer) }
                 }
@@ -412,7 +412,7 @@ struct RuleDetail: View {
     private func peerRow(_ peer: PeerStatus) -> some View {
         let name = manager.contactName(forPublicKey: peer.publicKey) ?? short(peer.publicKey)
         let fullName = manager.contactName(forPublicKey: peer.publicKey) ?? peer.publicKey
-        let connection = peer.isDirect ? "直连 \(peer.curAddr)" : "中继 \(peer.relay)"
+        let connection = L10n.tr(peer.isDirect ? "直连 %@" : "中继 %@", peer.isDirect ? peer.curAddr : peer.relay)
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
                 Text(name).lineLimit(1).truncationMode(.middle).help(fullName)
@@ -439,24 +439,24 @@ struct RuleDetail: View {
     }
 
     private var inboxBox: some View {
-        GroupBox("收件箱") {
+        GroupBox(L10n.tr("收件箱")) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(rule.recvDir).font(.body.monospaced()).lineLimit(1).truncationMode(.middle)
                         .help(rule.recvDir)
                     Spacer()
-                    Button("在 Finder 中打开") { NSWorkspace.shared.open(URL(fileURLWithPath: rule.recvDir)) }
+                    Button(L10n.tr("在 Finder 中打开")) { NSWorkspace.shared.open(URL(fileURLWithPath: rule.recvDir)) }
                 }
-                if rule.acceptDirs { Text("允许接收目录").font(.caption).foregroundStyle(.secondary) }
+                if rule.acceptDirs { Text(L10n.tr("允许接收目录")).font(.caption).foregroundStyle(.secondary) }
                 let received = manager.inbox[rule.id] ?? []
                 if !received.isEmpty {
                     Divider()
                     HStack {
-                        Text("新收到 \(received.count) 项").font(.caption).foregroundStyle(.secondary)
+                        Text(L10n.tr("新收到 %d 项", received.count)).font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("清除记录") { manager.clearInbox(id: rule.id) }
+                        Button(L10n.tr("清除记录")) { manager.clearInbox(id: rule.id) }
                             .buttonStyle(.link)
-                            .help("只清除列表记录，不会删除收件箱中的文件。")
+                            .help(L10n.tr("只清除列表记录，不会删除收件箱中的文件。"))
                     }
                     ForEach(received, id: \.self) { name in
                         Button(name) {

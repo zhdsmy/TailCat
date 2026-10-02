@@ -39,7 +39,7 @@ swift scripts/make-icon.swift              # 重新生成 Resources/AppIcon.icns
 - 【MUST】数据文件格式（`rules.json` 等）变化须向后兼容读取旧格式并带迁移测试；偏好设置键改名同理。
 - 【SHOULD】注释解释“为什么”（约束、取舍、tailcat 的行为怪癖），一眼能看懂的代码不写注释。
 - 【SHOULD】小而聚焦的改动，贴合周围代码的命名和风格；不做无关重构。
-- 界面文案使用简体中文；命令行参数、代码标识符保持英文原样。
+- 界面文案通过 `L10n.tr` 本地化，原简体中文作 key；同步维护 `Sources/TailCatCore/Resources/` 中 en、zh-Hans、zh-Hant 三份资源。动态值使用格式占位符，用户数据、命令行参数和持久化标识保持原样。语言设置重启生效；快照用 `--language=en|zh-Hans|zh-Hant`。
 
 ## 安全与隐私
 

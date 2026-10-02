@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Network
+import TailCatCore
 
 /// Fires when the machine wakes from sleep or the network path changes, both of which silently
 /// break WireGuard/DERP sessions that `tailcat forward` will not notice on its own.
@@ -17,7 +18,7 @@ final class SystemEvents {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.fire("系统唤醒", after: interval, onChange) }
+            MainActor.assumeIsolated { self?.fire(L10n.tr("系统唤醒"), after: interval, onChange) }
         }
 
         monitor.pathUpdateHandler = { [weak self] path in
@@ -28,7 +29,7 @@ final class SystemEvents {
                 defer { self.lastSignature = signature }
                 guard let previous = self.lastSignature, previous != signature,
                       path.status == .satisfied else { return }
-                self.fire("网络变化", after: interval, onChange)
+                self.fire(L10n.tr("网络变化"), after: interval, onChange)
             }
         }
         monitor.start(queue: DispatchQueue(label: "tailcat.netmonitor"))

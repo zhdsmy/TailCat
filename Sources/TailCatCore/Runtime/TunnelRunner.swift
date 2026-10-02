@@ -22,8 +22,8 @@ public enum LaunchError: Error, Equatable, Sendable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .binaryNotFound: return "找不到 tailcat，请先安装（brew install tailcat）或在设置里指定路径"
-        case .missingRemote: return "引用的远端不存在，请编辑规则重新选择"
+        case .binaryNotFound: return L10n.tr("找不到 tailcat，请先安装（brew install tailcat）或在设置里指定路径")
+        case .missingRemote: return L10n.tr("引用的远端不存在，请编辑规则重新选择")
         }
     }
 }
@@ -192,7 +192,7 @@ public final class TunnelRunner: ObservableObject, Identifiable {
 
     public func restart(reason: String) {
         guard state.isActive else { return }
-        appendLog("# \(reason)，重启")
+        appendLog(L10n.tr("# %@，重启", reason))
         stop()
         start()
     }
@@ -201,7 +201,7 @@ public final class TunnelRunner: ObservableObject, Identifiable {
     public func update(rule newRule: TunnelRule) {
         let changed = newRule != rule
         rule = newRule
-        if changed, state.isActive { restart(reason: "配置已修改") }
+        if changed, state.isActive { restart(reason: L10n.tr("配置已修改")) }
     }
 
     /// Blocking stop for app quit, when no scheduled work will get a chance to run.
@@ -220,11 +220,11 @@ public final class TunnelRunner: ObservableObject, Identifiable {
         defer { pingBusy = false }
         let spec: LaunchSpec
         do { spec = try config.launch(rule) } catch {
-            appendLog("# 无法 ping：\(error)")
+            appendLog(L10n.tr("# 无法 ping：%@", String(describing: error)))
             return nil
         }
         guard spec.identity != nil else {
-            appendLog("# 该规则没有目标地址，无法 ping")
+            appendLog(L10n.tr("# 该规则没有目标地址，无法 ping"))
             return nil
         }
         appendLog(untilDirect ? "# ping --until-direct…" : "# ping…")
@@ -235,7 +235,7 @@ public final class TunnelRunner: ObservableObject, Identifiable {
             recordPing(result)
             appendLog("# \(result.detailLabel)")
         } else {
-            appendLog(untilDirect ? "# 在超时内未获得直连路径" : "# ping 失败")
+            appendLog(untilDirect ? L10n.tr("# 在超时内未获得直连路径") : L10n.tr("# ping 失败"))
         }
         return result
     }
@@ -263,7 +263,7 @@ public final class TunnelRunner: ObservableObject, Identifiable {
         while isCurrent(gen) {
             let spec: LaunchSpec
             do { spec = try config.launch(rule) } catch {
-                setState(gen, .failed(reason: "\(error)"))
+                setState(gen, .failed(reason: String(describing: error)))
                 return
             }
             setState(gen, .starting)
@@ -273,11 +273,11 @@ public final class TunnelRunner: ObservableObject, Identifiable {
             clearRunInfo()
 
             let reason = describe(outcome)
-            appendLog("# 进程退出：\(reason)")
+            appendLog(L10n.tr("# 进程退出：%@", reason))
 
             if outcome.launchFailed || OutputParser.isPermanentFailure(outcome.tail, kind: rule.kind) || !rule.autoRestart {
                 setState(gen, .failed(reason: reason))
-                onNotify?(rule.name, "\(rule.kind.label)失败：\(reason)")
+                onNotify?(rule.name, L10n.tr("%@失败：%@", rule.kind.label, reason))
                 return
             }
 
@@ -288,7 +288,7 @@ public final class TunnelRunner: ObservableObject, Identifiable {
                                         retryAt: Date().addingTimeInterval(delay),
                                         reason: reason))
             if attempt == 3 || attempt == 8 {
-                onNotify?(rule.name, "正在重连（第 \(attempt) 次）：\(reason)")
+                onNotify?(rule.name, L10n.tr("正在重连（第 %@ 次）：%@", String(attempt), reason))
             }
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
@@ -304,10 +304,10 @@ public final class TunnelRunner: ObservableObject, Identifiable {
     }
 
     private func describe(_ outcome: Outcome) -> String {
-        if let error = outcome.launchError { return "无法启动：\(error)" }
-        if outcome.unhealthy { return "健康检查失败（服务端无响应）" }
+        if let error = outcome.launchError { return L10n.tr("无法启动：%@", error) }
+        if outcome.unhealthy { return L10n.tr("健康检查失败（服务端无响应）") }
         if let last = outcome.tail.last(where: { !$0.isEmpty }) { return last }
-        return "退出码 \(outcome.status.map(String.init) ?? "?")"
+        return L10n.tr("退出码 %@", outcome.status.map(String.init) ?? "?")
     }
 
     private func runOnce(gen: Int, spec: LaunchSpec) async -> Outcome {
@@ -426,8 +426,8 @@ public final class TunnelRunner: ObservableObject, Identifiable {
                 failures += 1
             }
             if failures >= config.healthFailureThreshold {
-                appendLog("# 健康检查连续失败 \(failures) 次，重启隧道进程")
-                onNotify?(rule.name, "健康检查失败，正在重启隧道")
+                appendLog(L10n.tr("# 健康检查连续失败 %@ 次，重启隧道进程", String(failures)))
+                onNotify?(rule.name, L10n.tr("健康检查失败，正在重启隧道"))
                 box.markUnhealthy()
                 box.terminate(grace: config.terminateGrace)
                 return

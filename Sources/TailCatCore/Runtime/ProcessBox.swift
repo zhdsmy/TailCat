@@ -86,7 +86,7 @@ public struct ProcessOutput: Sendable {
     /// Last non-empty stderr line, for error messages.
     public var errorSummary: String {
         stderr.split(whereSeparator: \.isNewline).map(String.init)
-            .last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? "退出码 \(status.map(String.init) ?? "?")"
+            .last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? L10n.tr("退出码 %@", status.map(String.init) ?? "?")
     }
 }
 

@@ -20,42 +20,42 @@ struct KeysView: View {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("密钥").font(.title2)
+                        Text(L10n.tr("密钥")).font(.title2)
                         Spacer()
                         Button { Task { await manager.refreshKeys() } } label: { Image(systemName: "arrow.clockwise") }
-                            .help("刷新")
+                            .help(L10n.tr("刷新"))
                     }
                     ViewThatFits(in: .horizontal) {
                         HStack {
-                            Button("新建服务端密钥…") { creating = .server }
-                            Button("新建客户端密钥…") { creating = .client }
-                            Button("DNS 发布向导…") { showWizard = true }
+                            Button(L10n.tr("新建服务端密钥…")) { creating = .server }
+                            Button(L10n.tr("新建客户端密钥…")) { creating = .client }
+                            Button(L10n.tr("DNS 发布向导…")) { showWizard = true }
                         }
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Button("新建服务端密钥…") { creating = .server }
-                                Button("新建客户端密钥…") { creating = .client }
+                                Button(L10n.tr("新建服务端密钥…")) { creating = .server }
+                                Button(L10n.tr("新建客户端密钥…")) { creating = .client }
                             }
-                            Button("DNS 发布向导…") { showWizard = true }
+                            Button(L10n.tr("DNS 发布向导…")) { showWizard = true }
                         }
                     }
                 }
-                Text("服务端密钥用于共享本机服务；客户端密钥用于连接他人。nodekey: 公钥用于客户端允许列表，SSH 公钥用于 SSH 登录。")
+                Text(L10n.tr("服务端密钥用于共享本机服务；客户端密钥用于连接他人。nodekey: 公钥用于客户端允许列表，SSH 公钥用于 SSH 登录。"))
                     .font(.caption).foregroundStyle(.secondary)
-                DisclosureGroup("密钥与地址有什么关系？", isExpanded: $keyHelpExpanded) {
-                    Text("服务端密钥可复用身份，但地址也受 DERP 区域影响。长期分享或发布 DNS 时，建议创建密钥时固定区域（--fixed-region）；已有密钥的区域不能在此修改。未指定服务端密钥时使用 default，未指定客户端密钥时使用 client-default。")
+                DisclosureGroup(L10n.tr("密钥与地址有什么关系？"), isExpanded: $keyHelpExpanded) {
+                    Text(L10n.tr("服务端密钥可复用身份，但地址也受 DERP 区域影响。长期分享或发布 DNS 时，建议创建密钥时固定区域（--fixed-region）；已有密钥的区域不能在此修改。未指定服务端密钥时使用 default，未指定客户端密钥时使用 client-default。"))
                         .font(.caption).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if let message { Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
 
                 if !manager.savedKeys.contains("client-default") {
-                    missingDefault("未保存 client-default：未指定客户端密钥时，每次连接都会使用临时身份。若要让对方通过 --allow 固定放行，请创建客户端密钥并把 nodekey: 公钥发给对方。",
-                                   create: "创建 client-default…") { creating = .client }
+                    missingDefault(L10n.tr("未保存 client-default：未指定客户端密钥时，每次连接都会使用临时身份。若要让对方通过 --allow 固定放行，请创建客户端密钥并把 nodekey: 公钥发给对方。"),
+                                   create: L10n.tr("创建 client-default…")) { creating = .client }
                 }
                 if !manager.savedKeys.contains("default") {
-                    missingDefault("未保存 default：未指定服务端密钥时，每次启动都会使用临时身份并更换地址。",
-                                   create: "创建 default…") { creating = .server }
+                    missingDefault(L10n.tr("未保存 default：未指定服务端密钥时，每次启动都会使用临时身份并更换地址。"),
+                                   create: L10n.tr("创建 default…")) { creating = .server }
                 }
                 ForEach(orderedKeys, id: \.self) { name in
                     keyRow(name)
@@ -66,10 +66,10 @@ struct KeysView: View {
         .task { await manager.refreshKeys() }
         .sheet(item: $creating) { role in KeyCreateSheet(role: role) }
         .sheet(isPresented: $showWizard) { DNSWizard() }
-        .confirmationDialog("删除密钥「\(pendingDelete ?? "")」？", isPresented: Binding(
+        .confirmationDialog(L10n.tr("删除密钥「%@」？", "\(pendingDelete ?? "")"), isPresented: Binding(
             get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }
         )) {
-            Button("删除", role: .destructive) { if let name = pendingDelete { delete(name) } }
+            Button(L10n.tr("删除"), role: .destructive) { if let name = pendingDelete { delete(name) } }
         } message: {
             Text(deleteWarning(pendingDelete ?? ""))
         }
@@ -103,25 +103,25 @@ struct KeysView: View {
                     Image(systemName: meta.effectiveRole == .client ? "person.crop.circle" : "server.rack")
                     Text(name).font(.headline).lineLimit(1).truncationMode(.middle).help(name)
                     switch name {
-                    case "client-default": Badge(text: "本机默认客户端身份", color: .accentColor, systemImage: "checkmark.seal")
-                    case "default": Badge(text: "默认服务端身份", color: .accentColor, systemImage: "checkmark.seal")
+                    case "client-default": Badge(text: L10n.tr("本机默认客户端身份"), color: .accentColor, systemImage: "checkmark.seal")
+                    case "default": Badge(text: L10n.tr("默认服务端身份"), color: .accentColor, systemImage: "checkmark.seal")
                     default: if let role = meta.effectiveRole { Text(role.label).font(.caption).foregroundStyle(.secondary) }
                     }
-                    if let region = meta.region { Text(region).font(.caption).foregroundStyle(.secondary) }
+                    if let region = meta.region { Text(region == "固定区域" || region == "自建 DERP" ? L10n.tr(region) : region).font(.caption).foregroundStyle(.secondary) }
                     Spacer()
                     if meta.effectiveRole != .server {
-                        Button("复制客户端公钥") { copyPublicKey(name) }.disabled(busy)
+                        Button(L10n.tr("复制客户端公钥")) { copyPublicKey(name) }.disabled(busy).fixedSize()
                     }
-                    Button("删除…", role: .destructive) { pendingDelete = name }
+                    Button(L10n.tr("删除…"), role: .destructive) { pendingDelete = name }.fixedSize()
                 }
                 if let address = meta.address {
-                    CopyableText(text: address, font: .caption.monospaced(), secret: true, copyLabel: "复制完整地址")
+                    CopyableText(text: address, font: .caption.monospaced(), secret: true, copyLabel: L10n.tr("复制完整地址"))
                 } else if meta.effectiveRole != .client {
-                    Text("地址未知：用此密钥启动一次服务后会记录下来。").font(.caption).foregroundStyle(.secondary)
+                    Text(L10n.tr("地址未知：用此密钥启动一次服务后会记录下来。")).font(.caption).foregroundStyle(.secondary)
                 }
-                if let pub = meta.publicKey { CopyableText(text: pub, font: .caption.monospaced(), copyLabel: "复制客户端公钥") }
+                if let pub = meta.publicKey { CopyableText(text: pub, font: .caption.monospaced(), copyLabel: L10n.tr("复制客户端公钥")) }
                 if !usedBy.isEmpty {
-                    Text("使用者：\(usedBy.joined(separator: "、"))").font(.caption).foregroundStyle(.secondary)
+                    Text(L10n.tr("使用者：%@", usedBy.joined(separator: L10n.tr("、")))).font(.caption).foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -130,9 +130,9 @@ struct KeysView: View {
 
     private func deleteWarning(_ name: String) -> String {
         switch name {
-        case "default": return "default 是未指定服务端密钥时自动使用的身份。删除后这些服务可能改用临时身份，地址会变化。"
-        case "client-default": return "client-default 是未指定客户端密钥时使用的身份。删除后对方 --allow 里的旧公钥将不再匹配。"
-        default: return "删除后使用此密钥的地址或公钥将失效，无法恢复。"
+        case "default": return L10n.tr("default 是未指定服务端密钥时自动使用的身份。删除后这些服务可能改用临时身份，地址会变化。")
+        case "client-default": return L10n.tr("client-default 是未指定客户端密钥时使用的身份。删除后对方 --allow 里的旧公钥将不再匹配。")
+        default: return L10n.tr("删除后使用此密钥的地址或公钥将失效，无法恢复。")
         }
     }
 
@@ -143,10 +143,10 @@ struct KeysView: View {
             switch await manager.cli.printpub(key: name) {
             case .success(let pub):
                 Clipboard.copy(pub)
-                message = "客户端公钥已复制。"
+                message = L10n.tr("客户端公钥已复制。")
                 if !name.isEmpty { manager.recordKey(KeyMeta(name: name, role: .client, publicKey: pub)) }
             case .failure(let e):
-                message = Diagnostics.mask("获取客户端公钥失败：\(e.message)")
+                message = Diagnostics.mask(L10n.tr("获取客户端公钥失败：%@", "\(e.message)"))
             }
         }
     }
@@ -156,9 +156,9 @@ struct KeysView: View {
             switch await manager.cli.deleteKey(name: name) {
             case .success:
                 manager.forgetKey(name: name)
-                message = "已删除 \(name)"
+                message = L10n.tr("已删除 %@", "\(name)")
             case .failure(let e):
-                message = Diagnostics.mask("删除密钥失败：\(e.message)")
+                message = Diagnostics.mask(L10n.tr("删除密钥失败：%@", "\(e.message)"))
             }
             await manager.refreshKeys()
         }
@@ -174,10 +174,10 @@ enum RegionMode: String, CaseIterable, Hashable {
 
     var label: String {
         switch self {
-        case .auto: return "自动（每次启动按延迟选择）"
-        case .nearestNow: return "现在选最近区域并固定（--fixed-region）"
-        case .named: return "指定区域"
-        case .custom: return "自建 DERP 主机名"
+        case .auto: return L10n.tr("自动（每次启动按延迟选择）")
+        case .nearestNow: return L10n.tr("现在选最近区域并固定（--fixed-region）")
+        case .named: return L10n.tr("指定区域")
+        case .custom: return L10n.tr("自建 DERP 主机名")
         }
     }
 }
@@ -193,11 +193,11 @@ private struct RegionFields: View {
     @ViewState private var loadError: String?
 
     var body: some View {
-        Picker("DERP 区域", selection: $mode) {
+        Picker(L10n.tr("DERP 区域"), selection: $mode) {
             ForEach(RegionMode.allCases.filter { allowAuto || $0 != .auto }, id: \.self) { Text($0.label).tag($0) }
         }
         .task(id: mode) { await loadRegionsIfNeeded() }
-        Text("创建密钥时选择区域；已有密钥的区域不能在此修改。长期分享或发布 DNS 时建议固定区域；自动模式每次启动都会按延迟重新选择。")
+        Text(L10n.tr("创建密钥时选择区域；已有密钥的区域不能在此修改。长期分享或发布 DNS 时建议固定区域；自动模式每次启动都会按延迟重新选择。"))
             .font(.caption).foregroundStyle(.secondary)
         if mode == .named {
             if regions.isEmpty {
@@ -206,18 +206,18 @@ private struct RegionFields: View {
                         Text(loadError).font(.caption).foregroundStyle(.red)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
-                        Text("正在加载区域列表…").font(.caption).foregroundStyle(.secondary)
+                        Text(L10n.tr("正在加载区域列表…")).font(.caption).foregroundStyle(.secondary)
                     }
-                    TextField("区域代码", text: $named, prompt: Text("如 sfo"))
+                    TextField(L10n.tr("区域代码"), text: $named, prompt: Text(L10n.tr("如 sfo")))
                 }
             } else {
-                Picker("区域", selection: $named) {
+                Picker(L10n.tr("区域"), selection: $named) {
                     ForEach(regions) { r in Text("\(r.code) · \(r.name)").tag(r.code) }
                 }
             }
         }
         if mode == .custom {
-            TextField(text: $hosts, prompt: Text("derp1.example.com,derp2.example.com")) { Text("主机名").font(.body) }
+            TextField(text: $hosts, prompt: Text("derp1.example.com,derp2.example.com")) { Text(L10n.tr("主机名")).font(.body) }
                 .font(.body.monospaced())
         }
     }
@@ -228,7 +228,7 @@ private struct RegionFields: View {
         case .success(let list):
             regions = list
             if named.isEmpty, let first = list.first { named = first.code }
-        case .failure(let e): loadError = Diagnostics.mask("无法获取区域列表：\(e.message)")
+        case .failure(let e): loadError = Diagnostics.mask(L10n.tr("无法获取区域列表：%@", "\(e.message)"))
         }
     }
 }
@@ -269,27 +269,27 @@ struct KeyCreateSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(role == .server ? "新建服务端密钥" : "新建客户端密钥").font(.headline)
+            Text(role == .server ? L10n.tr("新建服务端密钥") : L10n.tr("新建客户端密钥")).font(.headline)
             Form {
-                TextField("名称", text: $name, prompt: Text(role == .server ? "如 home、office" : "如 client-laptop"))
+                TextField(L10n.tr("名称"), text: $name, prompt: Text(role == .server ? L10n.tr("如 home、office") : L10n.tr("如 client-laptop")))
                 if role == .server {
                     RegionFields(mode: $mode, named: $named, hosts: $hosts)
-                    Toggle("在地址中嵌入 DERP 地图（--embed-derp-map，地址更长但不依赖 DERP map URL）", isOn: $embed)
-                    Toggle("地址包含预共享密钥（--psk，默认开启）", isOn: $psk)
+                    Toggle(L10n.tr("在地址中嵌入 DERP 地图（--embed-derp-map，地址更长但不依赖 DERP map URL）"), isOn: $embed)
+                    Toggle(L10n.tr("地址包含预共享密钥（--psk，默认开启）"), isOn: $psk)
                 }
-                Toggle("覆盖同名密钥（--force，旧地址/公钥将失效）", isOn: $force)
+                Toggle(L10n.tr("覆盖同名密钥（--force，旧地址/公钥将失效）"), isOn: $force)
             }
             .formStyle(.grouped)
             if let error { Text(Diagnostics.mask(error)).font(.caption).foregroundStyle(.red) }
             if let result {
-                Text(role == .server ? "新地址：" : "公钥：").font(.caption)
+                Text(role == .server ? L10n.tr("新地址：") : L10n.tr("公钥：")).font(.caption)
                 CopyableText(text: result, font: .caption.monospaced(), lineLimit: 3, secret: role == .server)
             }
             HStack {
                 Spacer()
-                Button(result == nil ? "取消" : "完成") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(result == nil ? L10n.tr("取消") : L10n.tr("完成")) { dismiss() }.keyboardShortcut(.cancelAction)
                 if result == nil {
-                    Button("创建") { create() }.keyboardShortcut(.defaultAction).disabled(busy)
+                    Button(L10n.tr("创建")) { create() }.keyboardShortcut(.defaultAction).disabled(busy)
                 }
             }
         }
@@ -306,12 +306,12 @@ struct KeyCreateSheet: View {
     private func create() {
         error = nil
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard TailcatCLI.isValidKeyName(trimmed) else { error = "密钥名称只能包含字母、数字、. _ -，不能以 - 或 . 开头，也不能叫 new"; return }
+        guard TailcatCLI.isValidKeyName(trimmed) else { error = L10n.tr("密钥名称只能包含字母、数字、. _ -，不能以 - 或 . 开头，也不能叫 new"); return }
         busy = true
         Task {
             defer { busy = false }
             if role == .server {
-                guard let region = regionChoice(mode, named: named, hosts: hosts) else { error = "请填写区域"; return }
+                guard let region = regionChoice(mode, named: named, hosts: hosts) else { error = L10n.tr("请填写区域"); return }
                 switch await manager.cli.generateServerKey(name: trimmed, region: region, embedDERPMap: embed, psk: psk, force: force) {
                 case .success(let addr):
                     result = addr
@@ -370,29 +370,29 @@ struct DNSWizard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("DNS 发布向导").font(.headline)
-            Text("把服务端地址写进 DNS TXT 记录后，对方可以直接用域名连接（如 tailcat ssh 域名）。地址因此变成公开信息，所以必须限制可连接的客户端。")
+            Text(L10n.tr("DNS 发布向导")).font(.headline)
+            Text(L10n.tr("把服务端地址写进 DNS TXT 记录后，对方可以直接用域名连接（如 tailcat ssh 域名）。地址因此变成公开信息，所以必须限制可连接的客户端。"))
                 .font(.caption).foregroundStyle(.secondary)
             Form {
-                Section("1. 生成固定区域的密钥") {
-                    TextField("密钥名称", text: $keyName, prompt: Text("如 dns")).disabled(address != nil)
+                Section(L10n.tr("1. 生成固定区域的密钥")) {
+                    TextField(L10n.tr("密钥名称"), text: $keyName, prompt: Text(L10n.tr("如 dns"))).disabled(address != nil)
                     RegionFields(mode: $mode, named: $named, hosts: $hosts, allowAuto: false).disabled(address != nil)
-                    Toggle("嵌入 DERP 地图", isOn: $embed).disabled(address != nil)
+                    Toggle(L10n.tr("嵌入 DERP 地图"), isOn: $embed).disabled(address != nil)
                     if address == nil {
-                        Button("生成") { generate() }.disabled(busy)
+                        Button(L10n.tr("生成")) { generate() }.disabled(busy)
                     }
                 }
                 if let address {
-                    Section("2. 添加 TXT 记录") {
-                        TextField("域名", text: $domain, prompt: Text("home.example.com"))
-                        let host = domain.isEmpty ? "<域名>" : domain
+                    Section(L10n.tr("2. 添加 TXT 记录")) {
+                        TextField(L10n.tr("域名"), text: $domain, prompt: Text("home.example.com"))
+                        let host = domain.isEmpty ? L10n.tr("<域名>") : domain
                         CopyableText(text: "\(host). TXT \"tailcat=\(address)\"", font: .caption.monospaced(), lineLimit: 4, secret: true)
                         CopyableText(text: "tailcat=\(address)", font: .caption.monospaced(), lineLimit: 4, secret: true)
                     }
-                    Section("3. 创建受限的服务") {
-                        TextField(text: $ports, prompt: Text("22 8080")) { Text("端口 / 服务").font(.body) }
+                    Section(L10n.tr("3. 创建受限的服务")) {
+                        TextField(text: $ports, prompt: Text("22 8080")) { Text(L10n.tr("端口 / 服务")).font(.body) }
                             .font(.body.monospaced())
-                        Text("端口和其他服务只对允许列表里的客户端开放；不勾选任何人时，只能开启下面的 SSH。")
+                        Text(L10n.tr("端口和其他服务只对允许列表里的客户端开放；不勾选任何人时，只能开启下面的 SSH。"))
                             .font(.caption).foregroundStyle(.secondary)
                         ForEach(manager.contacts) { c in
                             Toggle(c.name, isOn: Binding(
@@ -400,11 +400,11 @@ struct DNSWizard: View {
                                 set: { on in if on { allow.insert(c.publicKey) } else { allow.remove(c.publicKey) } }))
                         }
                         if manager.contacts.isEmpty {
-                            Text("通讯录为空：先在“通讯录”添加对方公钥，或使用 SSH 授权公钥。").font(.caption).foregroundStyle(.secondary)
+                            Text(L10n.tr("通讯录为空：先在“通讯录”添加对方公钥，或使用 SSH 授权公钥。")).font(.caption).foregroundStyle(.secondary)
                         }
-                        Toggle("开启 SSH（用授权公钥认证）", isOn: $useSSH)
+                        Toggle(L10n.tr("开启 SSH（用授权公钥认证）"), isOn: $useSSH)
                         if useSSH {
-                            TextField(text: $sshKeys, prompt: Text("alice@github, ~/.ssh/authorized_keys")) { Text("授权公钥来源").font(.body) }
+                            TextField(text: $sshKeys, prompt: Text("alice@github, ~/.ssh/authorized_keys")) { Text(L10n.tr("授权公钥来源")).font(.body) }
                                 .font(.body.monospaced())
                         }
                     }
@@ -413,15 +413,15 @@ struct DNSWizard: View {
             .formStyle(.grouped)
             .frame(height: 440)
             if address != nil && manager.capabilities == nil {
-                Text("正在检测 tailcat 功能，完成后可创建服务规则。")
+                Text(L10n.tr("正在检测 tailcat 功能，完成后可创建服务规则。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let error { Text(Diagnostics.mask(error)).font(.caption).foregroundStyle(.red) }
             HStack {
                 Spacer()
-                Button("关闭") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(L10n.tr("关闭")) { dismiss() }.keyboardShortcut(.cancelAction)
                 if address != nil {
-                    Button("创建服务规则") { createRule() }
+                    Button(L10n.tr("创建服务规则")) { createRule() }
                         .keyboardShortcut(.defaultAction)
                         .disabled(manager.capabilities == nil || (allow.isEmpty && !(useSSH && !sshKeys.trimmingCharacters(in: .whitespaces).isEmpty)))
                 }
@@ -434,8 +434,8 @@ struct DNSWizard: View {
     private func generate() {
         error = nil
         let name = keyName.trimmingCharacters(in: .whitespaces)
-        guard TailcatCLI.isValidKeyName(name) else { error = "密钥名称无效"; return }
-        guard let region = regionChoice(mode, named: named, hosts: hosts) else { error = "请填写区域"; return }
+        guard TailcatCLI.isValidKeyName(name) else { error = L10n.tr("密钥名称无效"); return }
+        guard let region = regionChoice(mode, named: named, hosts: hosts) else { error = L10n.tr("请填写区域"); return }
         busy = true
         Task {
             defer { busy = false }
@@ -453,17 +453,17 @@ struct DNSWizard: View {
         var services = ports.split(whereSeparator: { $0 == " " || $0 == "," }).map(String.init)
         if useSSH && !services.contains("ssh") { services.append("ssh") }
         let rule = TunnelRule(
-            name: domain.isEmpty ? "DNS 服务" : domain, kind: .serve,
+            name: domain.isEmpty ? L10n.tr("DNS 服务") : domain, kind: .serve,
             key: keyName.trimmingCharacters(in: .whitespaces), services: services,
             allow: manager.contacts.map(\.publicKey).filter(allow.contains).joined(separator: ","),
             sshAuthorizedKeys: useSSH ? sshKeys.trimmingCharacters(in: .whitespaces) : "")
         let issues = manager.validateForSave(rule)
-        guard issues.isEmpty else { error = issues.map(\.description).joined(separator: "；"); return }
+        guard issues.isEmpty else { error = issues.map(\.description).joined(separator: L10n.tr("；")); return }
         guard rule.authenticatesEveryClient else {
-            error = "未设置允许列表时只能开启 SSH：端口和其他服务会对所有读到 DNS 记录的人开放。"
+            error = L10n.tr("未设置允许列表时只能开启 SSH：端口和其他服务会对所有读到 DNS 记录的人开放。")
             return
         }
-        guard manager.add(rule) else { error = Diagnostics.mask(manager.loadError ?? "保存失败，请重试。"); return }
+        guard manager.add(rule) else { error = Diagnostics.mask(manager.loadError ?? L10n.tr("保存失败，请重试。")); return }
         dismiss()
     }
 }

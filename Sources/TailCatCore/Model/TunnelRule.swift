@@ -17,9 +17,9 @@ public enum TunnelKind: String, Codable, Sendable, CaseIterable {
 
     public var label: String {
         switch self {
-        case .forward: return "转发"
-        case .serve: return "服务"
-        case .recv: return "收件箱"
+        case .forward: return L10n.tr("转发")
+        case .serve: return L10n.tr("服务")
+        case .recv: return L10n.tr("收件箱")
         case .socks: return "SOCKS"
         }
     }
@@ -39,10 +39,10 @@ public enum FilesMode: String, Codable, Sendable, CaseIterable {
 
     public var label: String {
         switch self {
-        case .ro: return "只读（浏览和下载）"
-        case .rw: return "读写（浏览、下载和上传）"
-        case .wo: return "仅接收文件（不可浏览或下载）"
-        case .woPlus: return "接收文件和目录（不可浏览或下载）"
+        case .ro: return L10n.tr("只读（浏览和下载）")
+        case .rw: return L10n.tr("读写（浏览、下载和上传）")
+        case .wo: return L10n.tr("仅接收文件（不可浏览或下载）")
+        case .woPlus: return L10n.tr("接收文件和目录（不可浏览或下载）")
         }
     }
 }
@@ -71,26 +71,26 @@ public enum RuleIssue: Error, Equatable, Sendable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .emptyName: return "名称不能为空"
-        case .invalidAddress: return "地址不能为空，不能含空白字符，也不能以 - 开头"
-        case .noMappings: return "至少需要一条端口映射"
-        case .openBrowserNeedsOneMapping: return "--open-browser 必须且只能搭配一条端口映射"
-        case .invalidMapping(let m): return "端口映射格式不对：\(m)（应为 8080、18080:8080 或 3306:192.168.1.10:3306）"
-        case .invalidBind: return "监听地址不能为空，不能含空白字符，也不能以 - 开头"
-        case .invalidKey: return "Key 名称不能含空白；路径可含空格。均不能以 - 开头或含换行、空字符"
-        case .noServices: return "至少需要一项服务（端口、服务名、共享目录或 exec 命令）"
-        case .invalidService(let s): return "无效的服务项：\(s)"
-        case .capabilitiesPending: return "正在检测 tailcat 功能，请稍后再保存。"
-        case .serveMappingUnsupported(let s): return "当前 tailcat 版本不支持端口映射：\(s)。请只写端口（如 8080），或升级 tailcat 后在设置里重新检测"
-        case .sshNeedsAuthorizedKeys: return "ssh 服务必须配置授权公钥来源（--ssh-authorized-keys）"
-        case .invalidAuthorizedKeys: return "授权公钥来源不能含换行，也不能以 - 开头"
-        case .unsupportedKeySource(let s): return "tailcat 不支持这种公钥来源：\(s)（GitHub 账号写成 用户名@github）"
-        case .sshConflict: return "ssh 与 no-auth-ssh 不能同时开启"
-        case .invalidAllow(let s): return "允许列表项无效：\(s)（应为 nodekey:… 或 none）"
-        case .filesNeedsDirectory: return "files 服务需要指定共享目录（否则会共享 App 的工作目录）"
-        case .invalidDirectory: return "目录必须是绝对路径"
-        case .invalidExec: return "exec 需要命令（每行一个参数，第一行是程序）"
-        case .invalidListen: return "SOCKS 监听地址不能为空，不能含空白字符，也不能以 - 开头"
+        case .emptyName: return L10n.tr("名称不能为空")
+        case .invalidAddress: return L10n.tr("地址不能为空，不能含空白字符，也不能以 - 开头")
+        case .noMappings: return L10n.tr("至少需要一条端口映射")
+        case .openBrowserNeedsOneMapping: return L10n.tr("--open-browser 必须且只能搭配一条端口映射")
+        case .invalidMapping(let m): return L10n.tr("端口映射格式不对：%@（应为 8080、18080:8080 或 3306:192.168.1.10:3306）", m)
+        case .invalidBind: return L10n.tr("监听地址不能为空，不能含空白字符，也不能以 - 开头")
+        case .invalidKey: return L10n.tr("Key 名称不能含空白；路径可含空格。均不能以 - 开头或含换行、空字符")
+        case .noServices: return L10n.tr("至少需要一项服务（端口、服务名、共享目录或 exec 命令）")
+        case .invalidService(let s): return L10n.tr("无效的服务项：%@", s)
+        case .capabilitiesPending: return L10n.tr("正在检测 tailcat 功能，请稍后再保存。")
+        case .serveMappingUnsupported(let s): return L10n.tr("当前 tailcat 版本不支持端口映射：%@。请只写端口（如 8080），或升级 tailcat 后在设置里重新检测", s)
+        case .sshNeedsAuthorizedKeys: return L10n.tr("ssh 服务必须配置授权公钥来源（--ssh-authorized-keys）")
+        case .invalidAuthorizedKeys: return L10n.tr("授权公钥来源不能含换行，也不能以 - 开头")
+        case .unsupportedKeySource(let s): return L10n.tr("tailcat 不支持这种公钥来源：%@（GitHub 账号写成 用户名@github）", s)
+        case .sshConflict: return L10n.tr("ssh 与 no-auth-ssh 不能同时开启")
+        case .invalidAllow(let s): return L10n.tr("允许列表项无效：%@（应为 nodekey:… 或 none）", s)
+        case .filesNeedsDirectory: return L10n.tr("files 服务需要指定共享目录（否则会共享 App 的工作目录）")
+        case .invalidDirectory: return L10n.tr("目录必须是绝对路径")
+        case .invalidExec: return L10n.tr("exec 需要命令（每行一个参数，第一行是程序）")
+        case .invalidListen: return L10n.tr("SOCKS 监听地址不能为空，不能含空白字符，也不能以 - 开头")
         }
     }
 }
@@ -253,7 +253,7 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
     public func duplicate() -> TunnelRule {
         var copy = self
         copy.id = UUID()
-        copy.name += " 副本"
+        copy.name = L10n.tr("%@ 副本", copy.name)
         copy.autoStart = false
         return copy
     }
@@ -389,9 +389,9 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
                     cmds.append("tailcat ls -l \(serverAddress)")
                 }
                 if filesMode == .ro || filesMode == .rw {
-                    cmds.append("tailcat cp \(serverAddress):<文件> .")
+                    cmds.append(L10n.tr("tailcat cp %@:<文件> .", serverAddress))
                 }
-                if filesMode != .ro { cmds.append("tailcat cp <文件> \(serverAddress):") }
+                if filesMode != .ro { cmds.append(L10n.tr("tailcat cp <文件> %@:", serverAddress)) }
             }
             if services.contains("exit-node") {
                 cmds.append("tailcat socks \(serverAddress)")
@@ -399,8 +399,8 @@ public struct TunnelRule: Codable, Identifiable, Equatable, Sendable {
             if services.contains("perf") { cmds.append("tailcat perf \(serverAddress)") }
             cmds.append("tailcat ping \(serverAddress)")
         case .recv:
-            cmds.append("tailcat cp <文件> \(serverAddress):")
-            if acceptDirs { cmds.append("tailcat cp -r <目录> \(serverAddress):") }
+            cmds.append(L10n.tr("tailcat cp <文件> %@:", serverAddress))
+            if acceptDirs { cmds.append(L10n.tr("tailcat cp -r <目录> %@:", serverAddress)) }
         case .forward, .socks:
             break
         }

@@ -34,10 +34,12 @@ public struct PingResult: Equatable, Sendable {
         }
         switch path {
         case .direct:
-            return "直连 \(latencyText)"
+            return L10n.tr("直连 %@", latencyText)
         case .derp(let region):
             // tailcat reports some relays by numeric region ID, which tells a reader nothing.
-            return region.allSatisfy(\.isNumber) ? "中继 \(latencyText)" : "中继 \(region) \(latencyText)"
+            return region.allSatisfy(\.isNumber)
+                ? L10n.tr("中继 %@", latencyText)
+                : L10n.tr("中继 %@ %@", region, latencyText)
         }
     }
 

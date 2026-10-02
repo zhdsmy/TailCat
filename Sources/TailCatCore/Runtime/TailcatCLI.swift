@@ -105,7 +105,7 @@ public struct TailcatCLI: Sendable {
     /// Public key of the client key that `key` selects ("" = `client-default` or ephemeral).
     public func printpub(key: String = "") async -> Result<String, CLIError> {
         await runChecked(settings.globalFlagArguments(key: key) + ["printpub"], timeout: 10).flatMap { out in
-            Self.firstLine(out.stdout).map(Result.success) ?? .failure(CLIError("printpub 没有输出"))
+            Self.firstLine(out.stdout).map(Result.success) ?? .failure(CLIError(L10n.tr("printpub 没有输出")))
         }
     }
 
@@ -168,26 +168,26 @@ public struct TailcatCLI: Sendable {
     /// Returns the new server's tailcat address.
     public func generateServerKey(name: String, region: RegionChoice, embedDERPMap: Bool = false,
                                   psk: Bool = true, force: Bool = false) async -> Result<String, CLIError> {
-        guard Self.isValidKeyName(name) else { return .failure(CLIError("key 名称只能包含字母、数字、. _ -")) }
+        guard Self.isValidKeyName(name) else { return .failure(CLIError(L10n.tr("key 名称只能包含字母、数字、. _ -"))) }
         let args = settings.globalFlagArguments()
             + Self.serverKeyArguments(name: name, region: region, embedDERPMap: embedDERPMap, psk: psk, force: force)
         return await runChecked(args, timeout: 60).flatMap { out in
-            Self.firstLine(out.stdout).map(Result.success) ?? .failure(CLIError("genkey 没有输出地址"))
+            Self.firstLine(out.stdout).map(Result.success) ?? .failure(CLIError(L10n.tr("genkey 没有输出地址")))
         }
     }
 
     /// Returns the new client identity's public key.
     public func generateClientKey(name: String, force: Bool = false) async -> Result<String, CLIError> {
-        guard Self.isValidKeyName(name) else { return .failure(CLIError("key 名称只能包含字母、数字、. _ -")) }
+        guard Self.isValidKeyName(name) else { return .failure(CLIError(L10n.tr("key 名称只能包含字母、数字、. _ -"))) }
         var args = ["genkey", "--client", "--key=\(name)"]
         if force { args.append("--force") }
         return await runChecked(args, timeout: 20).flatMap { out in
-            Self.firstLine(out.stdout).map(Result.success) ?? .failure(CLIError("genkey 没有输出公钥"))
+            Self.firstLine(out.stdout).map(Result.success) ?? .failure(CLIError(L10n.tr("genkey 没有输出公钥")))
         }
     }
 
     public func deleteKey(name: String) async -> Result<Void, CLIError> {
-        guard Self.isValidKeyName(name) else { return .failure(CLIError("无效的 key 名称")) }
+        guard Self.isValidKeyName(name) else { return .failure(CLIError(L10n.tr("无效的 key 名称"))) }
         return await runChecked(["genkey", "--delete", "--key=\(name)"], timeout: 10).map { _ in () }
     }
 
@@ -240,7 +240,7 @@ public struct TailcatCLI: Sendable {
     public func perf(_ identity: ClientIdentity, options: PerfOptions) async -> Result<PerfReport, CLIError> {
         let args = Self.perfArguments(identity: identity, options: options, settings: settings)
         return await runChecked(args, timeout: options.hardTimeout).flatMap { out in
-            PerfReport.decode(out.stdout).map(Result.success) ?? .failure(CLIError("无法解析 perf 输出"))
+            PerfReport.decode(out.stdout).map(Result.success) ?? .failure(CLIError(L10n.tr("无法解析 perf 输出")))
         }
     }
 }
