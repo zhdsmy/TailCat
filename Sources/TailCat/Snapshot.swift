@@ -36,6 +36,11 @@ enum Snapshot {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let renderer = Renderer(output: output)
 
+        if CommandLine.arguments.contains("--only=readme-") {
+            try await captureReadme(renderer)
+            return
+        }
+
         let full = try SampleWorld(tailcatInstalled: true)
         defer { full.tearDown() }
         try await full.populate()
@@ -74,6 +79,42 @@ enum Snapshot {
         unreadable.manager.bootstrap()
         try await renderer.page("storage-load-failed", ManageView(), in: unreadable,
                                 size: CGSize(width: 900, height: 520))
+    }
+
+    /// Real views arranged together for the README; all data and processes remain isolated.
+    private static func captureReadme(_ renderer: Renderer) async throws {
+        let sample = try SampleWorld(tailcatInstalled: true, supportsPerf: true)
+        defer { sample.tearDown() }
+        try await sample.populate()
+        let manager = sample.manager
+        var shared = manager.runner(id: sample.serveID)!.rule
+        shared.services = ["ssh", "8000", "perf"]
+        shared.sshAuthorizedKeys = "alice@github"
+        shared.filesDir = "/Users/me/Shared"
+        shared.filesMode = .rw
+        manager.update(shared)
+        var remote = manager.remote(id: sample.macMiniID)!
+        remote.key = "client-laptop"
+        manager.saveRemote(remote)
+        try await sample.waitUntil {
+            manager.runner(id: sample.serveID)?.serverAddress != nil
+                && manager.capabilities != nil
+        }
+        await manager.runner(id: sample.forwardID)?.runPing()
+        await manager.runner(id: sample.socksID)?.runPing()
+        sample.navigation.selection = .rule(sample.serveID)
+        try await renderer.page("readme-overview", HStack(alignment: .top, spacing: 20) {
+            ManageView().frame(width: 900, height: 610)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            MenuContent().frame(width: 320)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }.padding(20).background(Color(nsColor: .controlBackgroundColor)), in: sample)
+        sample.navigation.selection = .remote(sample.macMiniID)
+        try await renderer.page("readme-remote", ManageView(), in: sample,
+                                size: CGSize(width: 900, height: 720))
     }
 
     private static func captureLayoutCases(_ renderer: Renderer) async throws {
@@ -382,22 +423,30 @@ private final class SampleWorld {
     }
 
     func populate() async throws {
+        // Fixture names follow the screenshot language; real user names are never translated.
+        func name(_ english: String, _ simplified: String, _ traditional: String) -> String {
+            switch L10n.language {
+            case .english: return english
+            case .traditionalChinese: return traditional
+            default: return simplified
+            }
+        }
         manager.bootstrap()
         manager.saveRemote(Remote(id: macMiniID, name: "Mac mini", address: Self.macMiniAddress, sshUser: "me"))
-        manager.saveRemote(Remote(id: officeID, name: "办公室 NAS", address: Self.officeAddress))
-        manager.saveRemote(Remote(id: laptopID, name: "旧笔记本", address: Self.laptopAddress))
-        manager.saveContact(Contact(name: "Alice 的 MacBook", publicKey: "nodekey:" + String(repeating: "3f9a", count: 16)))
+        manager.saveRemote(Remote(id: officeID, name: name("Office NAS", "办公室 NAS", "辦公室 NAS"), address: Self.officeAddress))
+        manager.saveRemote(Remote(id: laptopID, name: name("Old laptop", "旧笔记本", "舊筆電"), address: Self.laptopAddress))
+        manager.saveContact(Contact(name: name("Alice’s MacBook", "Alice 的 MacBook", "Alice 的 MacBook"), publicKey: "nodekey:" + String(repeating: "3f9a", count: 16)))
         manager.recordKey(KeyMeta(name: "home", role: .server, address: "tcHOME" + String(repeating: "Wp6Ge2Kc", count: 11),
                                   region: "sfo"))
 
         manager.add(TunnelRule(id: forwardID, name: "Mac mini SSH", remoteID: macMiniID, mappings: ["2222:22"]))
-        manager.add(TunnelRule(id: stoppedForwardID, name: "NAS 管理页", remoteID: officeID,
+        manager.add(TunnelRule(id: stoppedForwardID, name: name("NAS dashboard", "NAS 管理页", "NAS 管理頁"), remoteID: officeID,
                                mappings: ["8080:80", "0:443", "3306:192.168.1.10:3306"]))
-        manager.add(TunnelRule(id: failingID, name: "旧笔记本 屏幕共享", remoteID: laptopID, mappings: ["5900:5900"]))
-        manager.add(TunnelRule(id: socksID, name: "出口代理", kind: .socks, remoteID: macMiniID))
-        manager.add(TunnelRule(id: serveID, name: "本机 SSH 与网页", kind: .serve, key: "default",
+        manager.add(TunnelRule(id: failingID, name: name("Laptop screen sharing", "旧笔记本 屏幕共享", "舊筆電 螢幕共享"), remoteID: laptopID, mappings: ["5900:5900"]))
+        manager.add(TunnelRule(id: socksID, name: name("Exit proxy", "出口代理", "出口代理"), kind: .socks, remoteID: macMiniID))
+        manager.add(TunnelRule(id: serveID, name: name("Local SSH & web", "本机 SSH 与网页", "本機 SSH 與網頁"), kind: .serve, key: "default",
                                services: ["ssh", "8000"], allow: manager.contacts.map(\.publicKey).joined(separator: ",")))
-        manager.add(TunnelRule(id: recvID, name: "收件箱 · Downloads", kind: .recv,
+        manager.add(TunnelRule(id: recvID, name: name("Inbox · Downloads", "收件箱 · Downloads", "收件匣 · Downloads"), kind: .recv,
                                recvDir: directory.appendingPathComponent("inbox").path))
         for id in [forwardID, failingID, socksID, serveID] { manager.runner(id: id)?.start() }
 
