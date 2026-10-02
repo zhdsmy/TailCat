@@ -4,10 +4,16 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-02
+
 ### 新增
 
 - 支持英语、简体中文和繁体中文，默认跟随系统语言；设置中可指定语言，重启后生效。界面、使用说明、校验错误、通知与诊断共用 i18n 资源，原生面板同步语言选择。
 - 增加英文 README，与简体中文版互相跳转；快照支持指定语言，发布包包含完整语言资源。
+
+### 修复
+
+- 调整长文案布局，避免英文密钥复制按钮、地址操作按钮、规则说明和测速输入提示被截断。
 
 ## [0.2.1] - 2026-10-02
 
@@ -111,7 +117,9 @@
 
 - Bundle ID 由 `app.tailcat.menubar` 改为 `io.github.zhdsmy.TailCat`。自己构建过旧版本的用户：规则、远端等数据（`~/Library/Application Support/TailCat/`）不受影响，偏好设置会在首次启动时自动迁移；“登录时启动”需要重新打开，并在“系统设置 › 通用 › 登录项”里删掉旧条目；系统会重新询问通知权限。
 
-[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.3.0...HEAD
+
+[0.3.0]: https://github.com/zhdsmy/TailCat/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/zhdsmy/TailCat/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/zhdsmy/TailCat/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/zhdsmy/TailCat/compare/v0.1.1...v0.1.2
