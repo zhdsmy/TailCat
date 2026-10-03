@@ -3,6 +3,78 @@ import Testing
 @testable import TailCatCore
 
 @Suite struct UsabilityTests {
+    @Test(arguments: ["port", "address", "key", "id"])
+    func fileBrowserResetsWhenEndpointChanges(_ field: String) throws {
+        var remote = Remote(name: "Home", address: "tcEXAMPLE")
+        let entries = FileListing.parse("-rw-r--r-- 12 Oct 3 09:00 old-service.txt")
+        var browser = FileBrowserState(remote: remote, path: "documents", entries: entries)
+        let pendingID = browser.beginListing()
+        let pending = try #require(pendingID)
+        switch field {
+        case "port": remote.filePort = 2222
+        case "address": remote.address = "tcOTHER"
+        case "key": remote.key = "other-client"
+        default: remote.id = UUID()
+        }
+        let changed = browser.updateRemote(remote)
+        #expect(changed)
+        #expect(browser.path == "." && browser.entries == nil && !browser.loading && browser.error == nil)
+        browser.finishListing(.success(entries), path: "documents/old", requestID: pending)
+        browser.finishListing(.failure(CLIError("old endpoint failed")), path: "documents/old", requestID: pending)
+        #expect(browser.path == "." && browser.entries == nil && !browser.loading && browser.error == nil)
+        if field == "port" {
+            let blocked = browser.beginListing()
+            #expect(blocked == nil)
+        }
+    }
+
+    @Test func fileBrowserRejectsRequestsFromBeforePortRoundTripAndCancellation() throws {
+        var remote = Remote(name: "Home", address: "tcEXAMPLE")
+        var browser = FileBrowserState(remote: remote)
+        let oldID = browser.beginListing()
+        let old = try #require(oldID)
+        remote.filePort = 2222
+        browser.updateRemote(remote)
+        browser.path = "custom-port-folder"
+        let blocked = browser.beginListing()
+        #expect(blocked == nil)
+        remote.filePort = 22
+        browser.updateRemote(remote)
+        #expect(browser.path == ".")
+        let currentID = browser.beginListing()
+        let current = try #require(currentID)
+        browser.finishListing(.success([]), path: "old", requestID: old)
+        #expect(browser.path == "." && browser.entries == nil && browser.loading)
+        browser.finishListing(.success([]), path: "current", requestID: current)
+        #expect(browser.path == "current" && browser.entries == [] && !browser.loading)
+
+        let supersededID = browser.beginListing()
+        let superseded = try #require(supersededID)
+        let latestID = browser.beginListing()
+        let latest = try #require(latestID)
+        browser.finishListing(.failure(CLIError("late failure")), path: "old", requestID: superseded)
+        #expect(browser.loading && browser.error == nil)
+        browser.cancelListing()
+        browser.finishListing(.success([]), path: "cancelled", requestID: latest)
+        #expect(browser.path == "current" && !browser.loading && browser.error == nil)
+    }
+
+    @Test func fileBrowserKeepsDirectoryWhenOtherRemoteSettingsChange() throws {
+        var remote = Remote(name: "Home", address: "tcEXAMPLE")
+        var browser = FileBrowserState(remote: remote, path: "documents", entries: [])
+        let pendingID = browser.beginListing()
+        let pending = try #require(pendingID)
+        remote.name = "Renamed"
+        remote.webPort = 8080
+        remote.sshPort = "2222"
+        remote.sshUser = "alice"
+        let changed = browser.updateRemote(remote)
+        #expect(!changed)
+        #expect(browser.path == "documents" && browser.entries == [] && browser.loading)
+        browser.finishListing(.success([]), path: "documents/reports", requestID: pending)
+        #expect(browser.path == "documents/reports" && !browser.loading)
+    }
+
     @Test func oldRemoteDefaultsAndPortRoundTrip() throws {
         let old = try JSONDecoder().decode(Remote.self, from: Data(#"{"name":"Home","address":"tcEXAMPLE"}"#.utf8))
         #expect(old.sshPort.isEmpty && old.webPort == 80 && old.filePort == 22)
