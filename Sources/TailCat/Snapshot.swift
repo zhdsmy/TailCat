@@ -224,6 +224,7 @@ enum Snapshot {
         try await renderer.page("audit-file-transfer", ScrollView { FileBrowser(identity: identity, loading: true, error: error).padding() },
                                 in: sample, size: CGSize(width: 460, height: 420))
         try await renderer.page("audit-file-empty", FileBrowser(identity: identity, entries: []).padding().frame(width: 460), in: sample)
+        try await renderer.page("audit-file-port-changed", FilePortChangePreview().padding().frame(width: 460), in: sample)
         try await renderer.page("audit-copy-revealed", CopyableText(text: "tcLONG" + String(repeating: "q7Xk2PzR", count: 100), lineLimit: 3,
             secret: true, sharedReveal: .constant(true)).padding().frame(width: 460), in: sample)
 
@@ -347,6 +348,20 @@ enum Snapshot {
         try await page("dns-wizard", DNSWizard())
         try await page("dns-wizard-published", DNSWizard(address: "tcDNS" + String(repeating: "q7Xk2PzR", count: 10)))
         try await page("contact-editor", ContactEditor(contact: Contact(), isNew: true) { _ in true })
+    }
+}
+
+/// Keep the same remote ID while changing the endpoint after the directory has appeared.
+private struct FilePortChangePreview: View {
+    @ViewState private var remote = Remote(name: "Home", address: SampleWorld.macMiniAddress)
+
+    var body: some View {
+        FileBrowser(identity: remote.identity, remote: remote, path: "old-service",
+                    entries: FileListing.parse("-rw-r--r-- 12 Oct 3 09:00 old-service.txt"))
+            .task {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                remote.filePort = 2222
+            }
     }
 }
 

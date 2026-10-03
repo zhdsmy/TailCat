@@ -308,12 +308,8 @@ private struct RuleLink: View {
 /// `tailcat ls -l` browser with cp upload/download. Works against servers serving ssh or files.
 struct FileBrowser: View {
     @EnvironmentObject var manager: RuleManager
-    let identity: ClientIdentity
-
-    @ViewState private var path = "."
-    @ViewState private var entries: [RemoteFileEntry]?
-    @ViewState private var loading = false
-    @ViewState private var error: String?
+    @ViewState private var listing: FileBrowserState
+    @ViewState private var listingTask: Task<Void, Never>?
     let remote: Remote
     @EnvironmentObject var navigation: Navigation
     @ViewState private var dropTargeted = false
@@ -323,12 +319,10 @@ struct FileBrowser: View {
 
     init(identity: ClientIdentity, remote: Remote? = nil, path: String = ".", entries: [RemoteFileEntry]? = nil,
          loading: Bool = false, error: String? = nil, guidanceExpanded: Bool = false) {
-        self.identity = identity
-        _path = State(initialValue: path)
-        _entries = State(initialValue: entries)
-        _loading = State(initialValue: loading)
-        _error = State(initialValue: error)
-        self.remote = remote ?? Remote(name: L10n.tr("远端"), address: identity.address, key: identity.key)
+        let remote = remote ?? Remote(name: L10n.tr("远端"), address: identity.address, key: identity.key)
+        self.remote = remote
+        _listing = State(initialValue: FileBrowserState(remote: remote, path: path, entries: entries,
+                                                       loading: loading, error: error))
         _dropTargeted = State(initialValue: false)
         _preserveFileMetadata = State(initialValue: false)
         _guidanceExpanded = State(initialValue: guidanceExpanded)
@@ -353,26 +347,26 @@ struct FileBrowser: View {
                 }
                 Toggle(L10n.tr("保留修改时间和权限"), isOn: $preserveFileMetadata)
                     .disabled(isTransferring)
-                if loading { ProgressView().controlSize(.small) }
-                if let error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+                if listing.loading { ProgressView().controlSize(.small) }
+                if let error = listing.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                 if remote.filePort != 22 {
                     Text(L10n.tr("文件端口为 %@。当前 tailcat ls 仅支持 22 端口；可直接指定路径传输。", String(remote.filePort)))
                         .font(.caption).foregroundStyle(.secondary)
-                    TextField(L10n.tr("远端路径"), text: $path)
+                    TextField(L10n.tr("远端路径"), text: $listing.path)
                     Toggle(L10n.tr("下载目标是目录"), isOn: $downloadDirectory)
-                    Button(L10n.tr("按路径下载…")) { downloadPath() }.disabled(isTransferring || path.isEmpty)
+                    Button(L10n.tr("按路径下载…")) { downloadPath() }.disabled(isTransferring || listing.path.isEmpty)
                 }
                 ForEach(Array(jobs.prefix(2))) { TransferRow(item: $0) }
                 if !jobs.isEmpty {
                     Button(L10n.tr("查看所有传输")) { navigation.selection = .transfers }.buttonStyle(.link)
                 }
-                if let entries {
+                if let entries = listing.entries {
                     if entries.isEmpty { Text(L10n.tr("空目录")).foregroundStyle(.secondary) }
                     ForEach(entries) { entry in
                         HStack {
                             Image(systemName: entry.isDirectory ? "folder" : "doc")
                             if entry.isDirectory {
-                                Button { navigate(FileListing.join(path, entry.name)) } label: {
+                                Button { navigate(FileListing.join(listing.path, entry.name)) } label: {
                                     Text(entry.name).lineLimit(1).truncationMode(.middle)
                                 }
                                 .buttonStyle(.link).help(entry.name)
@@ -403,62 +397,69 @@ struct FileBrowser: View {
             .padding(4)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: dropTargeted ? 2 : 0))
             .onChange(of: jobs.first?.state) { state in
-                if state == .succeeded, entries != nil { navigate(path) }
+                if state == .succeeded, listing.entries != nil { navigate(listing.path) }
             }
             .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
                 loadURLs(providers) { upload($0) }
                 return true
             }
         }
+        .onChange(of: remote) { remote in
+            if listing.updateRemote(remote) {
+                listingTask?.cancel()
+                listingTask = nil
+                downloadDirectory = false
+            }
+        }
+        .onDisappear {
+            listingTask?.cancel()
+            listingTask = nil
+            listing.cancelListing()
+        }
     }
 
     private var pathNavigation: some View {
         HStack(spacing: 6) {
-            Button { navigate(FileListing.parent(of: path)) } label: { Image(systemName: "chevron.up") }
-                .disabled(path == "." || entries == nil)
+            Button { navigate(FileListing.parent(of: listing.path)) } label: { Image(systemName: "chevron.up") }
+                .disabled(listing.path == "." || listing.entries == nil || remote.filePort != 22)
                 .help(L10n.tr("返回上一级"))
                 .fixedSize()
-            Text(path == "." ? L10n.tr("/（共享根目录）") : path).font(.callout.monospaced())
+            Text(listing.path == "." ? L10n.tr("/（共享根目录）") : listing.path).font(.callout.monospaced())
                 .lineLimit(1).truncationMode(.middle)
-                .help(path == "." ? L10n.tr("/（共享根目录）") : path)
+                .help(listing.path == "." ? L10n.tr("/（共享根目录）") : listing.path)
         }
     }
 
     private var listingActions: some View {
         HStack(spacing: 8) {
-            Button(L10n.tr(entries == nil ? "列出文件" : "刷新")) { navigate(path) }
-                .disabled(loading || remote.filePort != 22).fixedSize()
+            Button(L10n.tr(listing.entries == nil ? "列出文件" : "刷新")) { navigate(listing.path) }
+                .disabled(listing.loading || remote.filePort != 22).fixedSize()
             Button(L10n.tr("发送文件…")) { upload(Panels.chooseFiles(message: L10n.tr("选择要发送到远端的文件或目录"))) }
                 .disabled(isTransferring).fixedSize()
         }
     }
 
     private func navigate(_ newPath: String) {
-        loading = true
-        error = nil
-        Task {
-            defer { loading = false }
-            switch await manager.cli.list(identity, path: newPath) {
-            case .success(let list):
-                path = newPath
-                entries = list.sorted { ($0.isDirectory ? 0 : 1, $0.name) < ($1.isDirectory ? 0 : 1, $1.name) }
-            case .failure(let e):
-                error = L10n.tr("列出失败：%@", e.message)
-            }
+        guard let requestID = listing.beginListing() else { return }
+        listingTask?.cancel()
+        listingTask = Task {
+            let result = await manager.cli.list(remote.identity, path: newPath)
+            guard !Task.isCancelled else { return }
+            listing.finishListing(result, path: newPath, requestID: requestID)
         }
     }
 
     private func upload(_ urls: [URL]) {
         guard !urls.isEmpty, !isTransferring else { return }
-        let target = remote.filePort != 22 || entries != nil ? path : ""
+        let target = remote.filePort != 22 || listing.entries != nil ? listing.path : ""
         manager.transfers.start(remote: remote, operation: .upload(files: urls, path: target), preserve: preserveFileMetadata)
     }
 
     private func download(_ entry: RemoteFileEntry) {
-        startDownload(path: FileListing.join(path, entry.name), isDirectory: entry.isDirectory)
+        startDownload(path: FileListing.join(listing.path, entry.name), isDirectory: entry.isDirectory)
     }
 
-    private func downloadPath() { startDownload(path: path, isDirectory: downloadDirectory) }
+    private func downloadPath() { startDownload(path: listing.path, isDirectory: downloadDirectory) }
 
     private func startDownload(path: String, isDirectory: Bool) {
         guard let dir = Panels.chooseDirectory(message: L10n.tr("下载 %@ 到…", path), prompt: L10n.tr("下载")) else { return }
