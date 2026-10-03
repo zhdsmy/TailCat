@@ -6,6 +6,12 @@ final class ProcessBox: @unchecked Sendable {
     private let process: Process
     private var unhealthy = false
     private var killed = false
+    private var timedOut = false
+
+    var didTimeOut: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return timedOut
+    }
 
     init(_ process: Process) {
         self.process = process
@@ -48,10 +54,11 @@ final class ProcessBox: @unchecked Sendable {
         try process.run()
     }
 
-    func kill() {
+    func kill(timedOut: Bool = false) {
         lock.lock(); defer { lock.unlock() }
         killed = true
         guard process.isRunning else { return }
+        self.timedOut = timedOut
         Foundation.kill(process.processIdentifier, SIGKILL)
     }
 
@@ -76,16 +83,19 @@ public struct ProcessOutput: Sendable {
     public var status: Int32?
     public var stdout: String
     public var stderr: String
+    public var timedOut: Bool
 
-    public init(status: Int32?, stdout: String, stderr: String) {
+    public init(status: Int32?, stdout: String, stderr: String, timedOut: Bool = false) {
         self.status = status
         self.stdout = stdout
         self.stderr = stderr
+        self.timedOut = timedOut
     }
 
     /// Last non-empty stderr line, for error messages.
     public var errorSummary: String {
-        stderr.split(whereSeparator: \.isNewline).map(String.init)
+        if timedOut { return L10n.tr("命令执行超时") }
+        return stderr.split(whereSeparator: \.isNewline).map(String.init)
             .last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? L10n.tr("退出码 %@", status.map(String.init) ?? "?")
     }
 }
@@ -190,6 +200,7 @@ enum ProcessRunner {
         }
         let box = ProcessBox(process)
         var drains: (Task<String, Never>, Task<String, Never>)?
+        var launchError: String?
 
         let status: Int32? = await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<Int32?, Never>) in
@@ -197,6 +208,7 @@ enum ProcessRunner {
                 do {
                     try box.run()
                 } catch {
+                    launchError = error.localizedDescription
                     process.terminationHandler = nil
                     continuation.resume(returning: nil)
                     return
@@ -207,15 +219,15 @@ enum ProcessRunner {
                     drains = (PipeReader.readAll(outPipe.fileHandleForReading),
                               PipeReader.readAll(errPipe.fileHandleForReading))
                 }
-                DispatchQueue.global().asyncAfter(deadline: .now() + hardTimeout) { box.kill() }
+                DispatchQueue.global().asyncAfter(deadline: .now() + hardTimeout) { box.kill(timedOut: true) }
             }
         } onCancel: {
             box.kill()
         }
 
         guard let drains else {
-            return ProcessOutput(status: status, stdout: "", stderr: "")
+            return ProcessOutput(status: status, stdout: "", stderr: launchError ?? "")
         }
-        return ProcessOutput(status: status, stdout: await drains.0.value, stderr: await drains.1.value)
+        return ProcessOutput(status: status, stdout: await drains.0.value, stderr: await drains.1.value, timedOut: box.didTimeOut)
     }
 }

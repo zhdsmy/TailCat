@@ -5,6 +5,8 @@ public enum RemoteIssue: Error, Equatable, Sendable, CustomStringConvertible {
     case invalidAddress
     case invalidKey
     case invalidUser
+    case invalidSSHPort
+    case invalidServicePort
 
     public var description: String {
         switch self {
@@ -12,6 +14,8 @@ public enum RemoteIssue: Error, Equatable, Sendable, CustomStringConvertible {
         case .invalidAddress: return L10n.tr("地址不能为空，不能含空白字符，也不能以 - 开头")
         case .invalidKey: return L10n.tr("Key 名称不能含空白；路径可含空格。均不能以 - 开头或含换行、空字符")
         case .invalidUser: return L10n.tr("SSH 用户名只能包含字母、数字、. _ -，且不能以 - 开头")
+        case .invalidSSHPort: return L10n.tr("SSH 端口格式不对")
+        case .invalidServicePort: return L10n.tr("网页和文件端口必须在 1–65535 之间")
         }
     }
 }
@@ -25,13 +29,20 @@ public struct Remote: Codable, Identifiable, Equatable, Sendable {
     /// Client `--key`; empty = tailcat's `client-default` if saved, else ephemeral.
     public var key: String
     public var sshUser: String
+    public var sshPort: String
+    public var webPort: Int
+    public var filePort: Int
 
-    public init(id: UUID = UUID(), name: String = "", address: String = "", key: String = "", sshUser: String = "") {
+    public init(id: UUID = UUID(), name: String = "", address: String = "", key: String = "", sshUser: String = "",
+                sshPort: String = "", webPort: Int = 80, filePort: Int = 22) {
         self.id = id
         self.name = name
         self.address = address
         self.key = key
         self.sshUser = sshUser
+        self.sshPort = sshPort
+        self.webPort = webPort
+        self.filePort = filePort
     }
 
     public init(from decoder: Decoder) throws {
@@ -41,6 +52,9 @@ public struct Remote: Codable, Identifiable, Equatable, Sendable {
         address = try c.decodeIfPresent(String.self, forKey: .address) ?? ""
         key = try c.decodeIfPresent(String.self, forKey: .key) ?? ""
         sshUser = try c.decodeIfPresent(String.self, forKey: .sshUser) ?? ""
+        sshPort = try c.decodeIfPresent(String.self, forKey: .sshPort) ?? ""
+        webPort = try c.decodeIfPresent(Int.self, forKey: .webPort) ?? 80
+        filePort = try c.decodeIfPresent(Int.self, forKey: .filePort) ?? 22
     }
 
     public var identity: ClientIdentity { ClientIdentity(address: address, key: key) }
@@ -51,6 +65,8 @@ public struct Remote: Codable, Identifiable, Equatable, Sendable {
         if !TunnelRule.isSafeToken(address) { issues.append(.invalidAddress) }
         if !key.isEmpty && !TunnelRule.isSafeKey(key) { issues.append(.invalidKey) }
         if !sshUser.isEmpty && !Self.isValidUser(sshUser) { issues.append(.invalidUser) }
+        if !SSHLauncher.isValidPort(sshPort) { issues.append(.invalidSSHPort) }
+        if !(1...65535).contains(webPort) || !(1...65535).contains(filePort) { issues.append(.invalidServicePort) }
         return issues
     }
 

@@ -32,7 +32,7 @@ Open **User guide** from the menu or management sidebar for connection, folder s
 
 | Goal | Start here |
 | --- | --- |
-| Open another device’s website | Add its tc address or DNS name as a remote, then choose **Open website**. This forwards a random local port to remote port 80. Use a custom forward for other ports, such as `18080:8080`. |
+| Open another device’s website | Add its tc address or DNS name as a remote, then choose **Open website**. This forwards a random local port to the remote’s saved web port (80 by default). Change the port in connection settings; use a custom forward for multiple mappings, such as `18080:8080`. |
 | Connect over SSH | Add a remote and choose **Open SSH in Terminal…**. The other device must offer SSH access. A client nodekey public key grants access through `--allow`; SSH public keys authenticate the SSH login separately. |
 | Share a local folder | Create a service, choose the folder and permissions, and select allowed clients. Start it and copy the address or suggested command for the recipient. |
 | Send or receive files | Choose **Receive…** in the menu to start an inbox. To send, drop files onto a remote or choose **Send files…**. Browsing and downloading require a readable file service on the other device. |
@@ -77,7 +77,9 @@ TailCat is a menu bar app (`LSUIElement`) with no Dock icon. Run `swift scripts/
 
 ## Features
 
-The menu groups rules into forwards, SOCKS, services and inboxes, with quick toggles and address copying. The management sidebar also contains remotes, keys, contacts and the usage guide.
+The menu groups rules into forwards, SOCKS, services and inboxes, with quick toggles and address copying. The management sidebar also contains remotes, file transfers, configuration backup, keys, contacts and the usage guide. Search rules and remotes with **⌘F**, filter by status, or right-click an entry for quick actions.
+
+Task presets cover websites, shared folders, SSH and inboxes. Port mappings support separate fields or text syntax, validation points to the affected fields, and advanced settings expand on demand. **Save and start** runs a rule after it is saved; **Save** only saves it. Both retain the existing access-control confirmation.
 
 Changes to rules take effect only after saving succeeds. Failed saves preserve the original rule and running state, show an error and allow retrying. **Duplicate as new rule** creates an independent copy with automatic startup disabled so you can adjust ports before saving.
 
@@ -90,14 +92,16 @@ Remote management brings connection checks, SSH, files and speed tests into one 
   <img src="docs/screenshots/remote-en.png" alt="English remote management window with the full sidebar, connection status, SSH, file transfers and speed test controls" width="900">
 </picture>
 
-- **Website shortcut:** establishes or reuses a supervised forward from a random local port to remote port 80. Repeated clicks reuse the same rule and open the page when ready. Edit or stop it like any other rule.
+- **Website shortcut:** establishes or reuses a supervised forward from a random local port to the remote’s saved web port (80 by default). Repeated clicks reuse the same rule and open the page when ready. Edit or stop it like any other rule.
 - **Command import:** accepts quoted and escaped `tailcat forward` commands, including key paths with spaces. Preserves the client key, bind address and browser option, and matches saved remotes by both address and key. Invalid mappings, unsupported options, shell expansions, substitutions and pipes are rejected. Configure a custom `--derpmap-url` in Settings before removing that option from an imported command. Opening a browser requires exactly one mapping.
+- **Transfer activity:** all uploads and downloads appear in **File transfers**, including menu sends and sidebar drops. Track status and elapsed time, cancel active jobs, retry failed/cancelled jobs, or reveal downloads in Finder. Switching pages does not stop transfers; quitting cancels active jobs and clears history. The app does not estimate byte progress.
+- **File ports:** `cp -P` uses each remote’s saved file port. The current `ls` wrapper lists only port 22; for a custom port, enter the path directly to upload or download.
 - **Copy options:** optionally preserve timestamps and permissions with `cp -p` for uploads and downloads in the remote file browser. Menu and sidebar transfers use the default copy options.
-- **Remote directory:** stores each address or DNS name, client key and SSH username once. Forwards and SOCKS rules reference the remote. Save and delete errors preserve existing data and remain visible for retrying. Legacy inline rule addresses migrate automatically.
+- **Remote directory:** stores each address or DNS name, client key, SSH username and endpoint, web port and file port once. Forwards and SOCKS rules reference the remote. Save and delete errors preserve existing data and remain visible for retrying. Legacy inline rule addresses migrate automatically.
 - **Port forwarding:** supports mappings, bind addresses, `--open-browser`, reconnects with exponential backoff, reconnects after wake or network changes, and periodic `ping` health checks. Copy listeners, open them in a browser or copy an SSH command.
 - **SOCKS:** runs a persistent proxy, optionally through an exit remote. Copy its `socks5h://` address or an `export all_proxy=…` command. Because browsers lowercase hostnames, they must use an exit remote or `server.tailcat`.
 - **Remote details:** shows the effective client key and offers to create `client-default` when it is missing. Without a saved client key, tailcat uses a temporary public key that cannot be reliably added to another device’s `--allow` list. Opening a remote probes it if the last result is over five minutes old; health checks also update its status. Status dots distinguish direct, relayed and unresponsive connections.
-- **SSH and diagnostics:** manually test connections or wait for a direct path with `--until-direct`. Open SSH in Terminal using a temporary, self-deleting `.command` script without Apple Events permission.
+- **SSH and diagnostics:** manually test connections or wait for a direct path with `--until-direct`. Probe failures retain masked error details and recovery suggestions. Open SSH in Terminal using a temporary, self-deleting `.command` script without Apple Events permission. **Run SSH / SOCKS command…** executes a command remotely via SSH, or locally through a temporary proxy. Enter one argument per line; spaces and metacharacters are preserved as arguments.
 - **Files and performance:** browse directories with `ls -l`, download or upload with `cp`, and send files by dragging them onto a remote. File listing does not pass SSH public keys; the remote must offer files or no-auth-ssh access. Performance tests support TCP/UDP, upload/download/both, parallel streams, time or byte limits, bitrate and `--via-derp`, with throughput charts, UDP loss/jitter and RTT under load.
 
 ### Servers
@@ -113,10 +117,13 @@ Remote management brings connection checks, SSH, files and speed tests into one 
 ### Keys and contacts
 
 - **Keys:** lists `genkey --list`, creates server or client keys, copies public keys with `printpub`, and deletes keys with extra warnings for `default` and `client-default`. Choose automatic relay selection, a fixed nearest region, a named region or custom DERP hosts; server keys can include the DERP map and a preshared key. The app records addresses when keys are created or services start, since tailcat cannot report an existing key’s address without starting its service.
+- Create client/server identities and contacts directly from the relevant editors; the draft stays open and the new entry is selected automatically.
 - **Contacts:** assigns names to client public keys (`nodekey:…`) for selecting allowed clients by name.
 - **DNS wizard:** creates a key with a fixed region and provides a `tailcat=<address>` TXT record. Services must restrict clients through `--allow`; without an allowlist, only SSH with authorized keys can be enabled. Otherwise, anyone reading the DNS record could access the published services.
 
 ### Other features
+
+- **Configuration backup:** export rules, remotes and contacts as a private JSON file. The file contains access credentials, but no tailcat private keys, preferences or transfer history. Import previews additions, skips duplicates and remaps conflicting IDs without replacing existing entries. Imported rules stay stopped with autostart disabled. Check keys, local folders and commands before starting them; a failed import keeps successfully saved entries so a new preview can safely retry.
 
 - **Settings:** language, custom executable path, detected version and capabilities, DERP map URL, verbose logs, notifications, launch at login and connected-client status. While capabilities are being checked, service editors and the DNS wizard wait before saving; other rules remain available.
 - **Update checking:** contacts GitHub only when you click **Check for updates**. Download the new DMG to replace the app.
@@ -130,7 +137,7 @@ Data lives in `~/Library/Application Support/TailCat/`. The directory uses mode 
 | File | Contents |
 | --- | --- |
 | `rules.json` | Tunnel rules, version 2; version 1 forward-only rules remain readable |
-| `remotes.json` | Remote addresses, client keys and SSH usernames |
+| `remotes.json` | Remote addresses, client keys, SSH users/endpoints and web/file ports |
 | `contacts.json` | Contact names and nodekey public keys |
 | `key-meta.json` | Cached key roles, addresses, public keys and regions; no private keys |
 | `pids.json` | Child-process IDs, executable paths and start times for safe orphan cleanup |

@@ -29,13 +29,13 @@ public enum SecureFile {
         }
     }
 
-    public static func write(_ data: Data, to url: URL) throws {
+    public static func write(_ data: Data, to url: URL, secureDirectory: Bool = true) throws {
         let fm = FileManager.default
         let directory = url.deletingLastPathComponent()
         try fm.createDirectory(at: directory, withIntermediateDirectories: true,
                                attributes: [.posixPermissions: 0o700])
         // createDirectory leaves an existing directory's mode alone.
-        try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        if secureDirectory { try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
         let tmp = directory.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
         guard fm.createFile(atPath: tmp.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
             throw CocoaError(.fileWriteUnknown)

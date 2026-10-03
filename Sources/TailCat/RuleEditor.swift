@@ -39,6 +39,13 @@ struct RuleEditor: View {
     @ViewState var mappingExamplesExpanded = false
     @ViewState private var importError: String?
     @ViewState private var saveError: String?
+    @ViewState private var startAfterSave = false
+    @ViewState private var advancedExpanded = false
+    @ViewState private var execExpanded: Bool
+    @ViewState private var focusRequest = 0
+    @ViewState private var creatingKey: KeyRole?
+    @ViewState private var creatingContact: Contact?
+    @FocusState private var focusedField: RuleEditorField?
 
     init(rule: TunnelRule, isNew: Bool, contacts: [Contact], saveError: String? = nil,
          importError: String? = nil, mappingExamplesExpanded: Bool = false,
@@ -63,6 +70,7 @@ struct RuleEditor: View {
         let rest = services.filter { !toggleNames.contains($0) && $0 != "files" && $0 != "exec" }
         _listText = State(initialValue: (rule.kind == .serve ? rest : rule.mappings).joined(separator: "\n"))
         _execText = State(initialValue: rule.execArgs.joined(separator: "\n"))
+        _execExpanded = State(initialValue: !rule.execArgs.isEmpty)
         _shareFiles = State(initialValue: !rule.filesDir.isEmpty)
 
         let known = Set(contacts.map(\.publicKey))
@@ -75,26 +83,30 @@ struct RuleEditor: View {
         VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: rule.kind.systemImage)
                 .font(.headline)
-            Form {
-                TextField(L10n.tr("名称"), text: $rule.name, prompt: Text(L10n.tr("给这条规则起个名字")))
-                switch rule.kind {
-                case .forward: forwardSection
-                case .socks: socksSection
-                case .serve: serveSection
-                case .recv: recvSection
+            ScrollViewReader { reader in
+                Form {
+                    TextField(L10n.tr("名称"), text: $rule.name, prompt: Text(L10n.tr("给这条规则起个名字")))
+                        .focused($focusedField, equals: .name).id(RuleEditorField.name)
+                    fieldErrors(.name)
+                    switch rule.kind {
+                    case .forward: forwardSection
+                    case .socks: socksSection
+                    case .serve: serveSection
+                    case .recv: recvSection
+                    }
+                    DisclosureGroup(L10n.tr("高级运行设置"), isExpanded: $advancedExpanded) { supervisionSection }
                 }
-                supervisionSection
-            }
-            .formStyle(.grouped)
-            .frame(minHeight: 360, idealHeight: rule.kind == .serve ? 600 : 420)
-            if !issues.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(issues.map(\.description), id: \.self) {
-                        Text($0).foregroundStyle(.red).font(.caption)
+                .formStyle(.grouped)
+                .frame(minHeight: 360, idealHeight: rule.kind == .serve ? 600 : 420)
+                .onChange(of: focusRequest) { _ in
+                    if let issue = issues.first {
+                        withAnimation { reader.scrollTo(RuleEditorField.field(for: issue), anchor: .center) }
                     }
                 }
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !issues.isEmpty {
+                Button(L10n.tr("请修正 %d 处输入，点击定位首个问题", issues.count)) { focusRequest += 1 }
+                    .buttonStyle(.link).foregroundStyle(.red).font(.caption)
             }
             if let saveError {
                 Text(Diagnostics.mask(saveError)).foregroundStyle(.red).font(.caption)
@@ -112,14 +124,26 @@ struct RuleEditor: View {
                 }
                 Spacer()
                 Button(L10n.tr("取消")) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(L10n.tr("保存")) { save(confirmed: false) }.keyboardShortcut(.defaultAction)
+                Button(L10n.tr("保存")) { save(confirmed: false, start: false) }.keyboardShortcut("s", modifiers: .command)
+                    .disabled(rule.kind == .serve && manager.capabilities == nil)
+                Button(L10n.tr("保存并启动")) { save(confirmed: false, start: true) }.keyboardShortcut(.defaultAction)
                     .disabled(rule.kind == .serve && manager.capabilities == nil)
             }
         }
         .padding()
         .frame(width: 580)
+        .sheet(item: $creatingKey) { role in
+            KeyCreateSheet(role: role) { name in rule.key = name }
+        }
+        .sheet(item: $creatingContact) { contact in
+            ContactEditor(contact: contact, isNew: true) { saved in
+                guard manager.saveContact(saved) else { return false }
+                allowContacts.insert(saved.publicKey)
+                return true
+            }
+        }
         .confirmationDialog(L10n.tr("该服务没有设置允许列表"), isPresented: $confirmRisk) {
-            Button(L10n.tr("仍然保存"), role: .destructive) { save(confirmed: true) }
+            Button(startAfterSave ? L10n.tr("仍然保存并启动") : L10n.tr("仍然保存"), role: .destructive) { save(confirmed: true) }
             Button(L10n.tr("取消"), role: .cancel) {}
         } message: {
             Text(L10n.tr("免认证 SSH、exec、出口节点和全部端口会把本机能力交给任何拿到地址的人。建议在“允许的客户端”里至少选一个联系人。"))
@@ -144,8 +168,12 @@ struct RuleEditor: View {
             Text(L10n.tr("直接输入地址…")).tag(Destination.inline)
         }
         if destination == .inline {
-            AddressField(address: $rule.address)
+            AddressField(address: $rule.address, focus: $focusedField).id(RuleEditorField.address)
+            fieldErrors(.address)
             TextField(L10n.tr("客户端密钥"), text: $rule.key, prompt: Text(L10n.tr("可选，留空用 client-default")))
+                .focused($focusedField, equals: .key).id(RuleEditorField.key)
+            fieldErrors(.key)
+            Button(L10n.tr("创建客户端身份…")) { creatingKey = .client }
             Text(L10n.tr("对方在 --allow 中需要这把客户端密钥的 nodekey: 公钥（可在“密钥”页复制）；SSH 公钥用于 SSH 登录，需另行配置。"))
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -158,8 +186,8 @@ struct RuleEditor: View {
     @ViewBuilder private var forwardSection: some View {
         Section(L10n.tr("目标")) { destinationPicker }
         Section(L10n.tr("端口映射（每行一条）")) {
-            TextEditor(text: $listText)
-                .font(.body.monospaced()).frame(height: 70)
+            MappingEditor(text: $listText, focus: $focusedField).id(RuleEditorField.mappings)
+            fieldErrors(.mappings)
             Text(L10n.tr("18080:8080 表示本机 18080 转发到远端 8080。"))
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -175,6 +203,8 @@ struct RuleEditor: View {
                 .padding(.top, 4)
             }
             TextField(L10n.tr("监听地址"), text: $rule.bind, prompt: Text("127.0.0.1"))
+                .focused($focusedField, equals: .bind).id(RuleEditorField.bind)
+            fieldErrors(.bind)
             Text(L10n.tr("127.0.0.1 仅允许本机访问；0.0.0.0 允许其他设备通过本机网络地址访问。"))
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -186,7 +216,8 @@ struct RuleEditor: View {
         Section(L10n.tr("代理")) {
             destinationPicker
             TextField(text: $rule.socksListen, prompt: Text("127.0.0.1:1080")) { Text(L10n.tr("监听地址")).font(.body) }
-                .font(.body.monospaced())
+                .font(.body.monospaced()).focused($focusedField, equals: .listen).id(RuleEditorField.listen)
+            fieldErrors(.listen)
             Text(L10n.tr("127.0.0.1 仅允许本机访问；0.0.0.0 允许其他设备通过本机网络地址访问。"))
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -214,6 +245,9 @@ struct RuleEditor: View {
                 Text(name).tag(name)
             }
         }
+        Button(L10n.tr("创建服务端身份…")) { creatingKey = .server }
+            .id(RuleEditorField.key)
+        fieldErrors(.key)
         if (rule.key == "new" || (rule.key.isEmpty && !manager.savedKeys.contains("default"))) && rule.autoRestart {
             Text(L10n.tr("使用临时身份时，进程每次重启（含自动重启）地址都会变化，需要重新发给对方。"))
                 .font(.caption).foregroundStyle(.orange)
@@ -231,6 +265,8 @@ struct RuleEditor: View {
         }
         Section(L10n.tr("端口与映射（每行一条，可选）")) {
             TextEditor(text: $listText).font(.body.monospaced()).frame(height: 60)
+                .focused($focusedField, equals: .services).id(RuleEditorField.services)
+            fieldErrors(.services)
             if manager.capabilities == nil {
                 Text(L10n.tr("正在检测 tailcat 功能，完成后可保存服务规则。"))
                     .font(.caption).foregroundStyle(.secondary)
@@ -263,16 +299,18 @@ struct RuleEditor: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            fieldErrors(.ssh).id(RuleEditorField.ssh)
             if namedServices.contains("ssh") || !rule.sshAuthorizedKeys.isEmpty {
                 TextField(text: $rule.sshAuthorizedKeys, prompt: Text("alice@github")) { Text(L10n.tr("SSH 授权公钥来源")).font(.body) }
-                    .font(.body.monospaced())
+                    .font(.body.monospaced()).focused($focusedField, equals: .ssh)
                 Text(L10n.tr("authorized_keys 文件路径、一行公钥，或 用户名@github（取自 github.com/用户名.keys），多个用逗号分隔"))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         Section(L10n.tr("共享目录")) {
-            Toggle(L10n.tr("共享一个目录（files 服务）"), isOn: $shareFiles)
+            Toggle(L10n.tr("共享一个目录（files 服务）"), isOn: $shareFiles).id(RuleEditorField.files)
+            fieldErrors(.files)
             if shareFiles {
                 HStack {
                     Text(rule.filesDir.isEmpty ? L10n.tr("未选择") : rule.filesDir)
@@ -293,13 +331,17 @@ struct RuleEditor: View {
                 }
             }
         }
-        Section(L10n.tr("执行命令（可选，每行一个参数）")) {
+        DisclosureGroup(L10n.tr("执行命令（可选，每行一个参数）"), isExpanded: $execExpanded) {
             TextEditor(text: $execText).font(.body.monospaced()).frame(height: 50)
+                .focused($focusedField, equals: .command).id(RuleEditorField.command)
+            fieldErrors(.command)
             Text(L10n.tr("第一行是程序（建议绝对路径）。不开 SSH 时作为 exec 服务，连接的输入输出接到该命令；与 SSH 同开时作为强制命令。命令不经 shell。"))
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         Section(L10n.tr("允许的客户端（--allow）")) {
+            Button(L10n.tr("添加联系人…")) { creatingContact = Contact() }.id(RuleEditorField.allow)
+            fieldErrors(.allow)
             if manager.contacts.isEmpty {
                 Text(L10n.tr("通讯录为空。可在“通讯录”里给对方的公钥起名字。")).font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -317,7 +359,7 @@ struct RuleEditor: View {
                 }
             }
             TextField(text: $allowExtra, prompt: Text("nodekey:…, nodekey:…")) { Text(L10n.tr("其他客户端公钥（可选）")).font(.body) }
-                .font(.body.monospaced())
+                .font(.body.monospaced()).focused($focusedField, equals: .allow)
             Text(L10n.tr("填写 nodekey: 公钥，多个用逗号分隔；都留空表示任何拿到地址的人都能连接。SSH 公钥不能用于此列表。"))
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -326,6 +368,7 @@ struct RuleEditor: View {
 
     @ViewBuilder private var recvSection: some View {
         Section(L10n.tr("收件箱")) {
+            fieldErrors(.files).id(RuleEditorField.files)
             HStack {
                 Text(rule.recvDir.isEmpty ? L10n.tr("未选择目录") : rule.recvDir)
                     .font(.body.monospaced()).lineLimit(1).truncationMode(.middle)
@@ -400,11 +443,27 @@ struct RuleEditor: View {
         return c
     }
 
-    private func save(confirmed: Bool) {
+    @ViewBuilder private func fieldErrors(_ field: RuleEditorField) -> some View {
+        ForEach(issues.filter { RuleEditorField.field(for: $0) == field }.map(\.description), id: \.self) {
+            Text(Diagnostics.mask($0)).font(.caption).foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func save(confirmed: Bool, start: Bool? = nil) {
+        if let start { startAfterSave = start }
         saveError = nil
         let c = candidate()
         issues = manager.validateForSave(c)
-        guard issues.isEmpty else { return }
+        guard issues.isEmpty else {
+            if let first = issues.first {
+                let field = RuleEditorField.field(for: first)
+                if field == .command { execExpanded = true }
+                focusedField = field
+                focusRequest += 1
+            }
+            return
+        }
         if c.needsAllowWarning && !confirmed {
             confirmRisk = true
             return
@@ -413,6 +472,7 @@ struct RuleEditor: View {
             saveError = manager.loadError ?? L10n.tr("保存失败，请重试。")
             return
         }
+        if startAfterSave, let runner = manager.runner(id: c.id), !runner.state.isActive { runner.start() }
         dismiss()
     }
 }
@@ -421,6 +481,13 @@ struct RuleEditor: View {
 struct AddressField: View {
     @EnvironmentObject var manager: RuleManager
     @Binding var address: String
+    private let focus: FocusState<RuleEditorField?>.Binding?
+    @FocusState private var ownFocus: RuleEditorField?
+
+    init(address: Binding<String>, focus: FocusState<RuleEditorField?>.Binding? = nil) {
+        _address = address
+        self.focus = focus
+    }
     @ViewState private var summary: String?
     @ViewState private var error: String?
     @ViewState private var busy = false
@@ -428,7 +495,7 @@ struct AddressField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             TextField(text: $address, prompt: Text("tc… / home.example.com")) { Text(L10n.tr("地址")).font(.body) }
-                .font(.body.monospaced())
+                .font(.body.monospaced()).focused(focus ?? $ownFocus, equals: .address)
                 .onSubmit { Task { await refresh() } }
             HStack {
                 Spacer()

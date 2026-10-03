@@ -248,6 +248,7 @@ struct KeyCreateSheet: View {
     @EnvironmentObject var manager: RuleManager
     @Environment(\.dismiss) private var dismiss
     let role: KeyRole
+    let onCreated: ((String) -> Void)?
 
     @ViewState private var name = ""
     @ViewState private var mode: RegionMode = .auto
@@ -260,8 +261,10 @@ struct KeyCreateSheet: View {
     @ViewState private var result: String?
     @ViewState private var error: String?
 
-    init(role: KeyRole, regionMode: RegionMode = .auto, result: String? = nil, error: String? = nil) {
+    init(role: KeyRole, regionMode: RegionMode = .auto, result: String? = nil, error: String? = nil,
+         onCreated: ((String) -> Void)? = nil) {
         self.role = role
+        self.onCreated = onCreated
         _mode = State(initialValue: regionMode)
         _result = State(initialValue: result)
         _error = State(initialValue: error)
@@ -327,6 +330,7 @@ struct KeyCreateSheet: View {
                 }
             }
             await manager.refreshKeys()
+            if result != nil { onCreated?(trimmed) }
         }
     }
 }

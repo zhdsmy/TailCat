@@ -215,6 +215,7 @@ private func isFailed(_ state: RunState) -> Bool {
         let out = await ProcessRunner.run(executable: URL(fileURLWithPath: "/bin/sh"), arguments: ["-c", "exec sleep 30"],
                                           hardTimeout: 0.3)
         #expect(out.status != 0)
+        #expect(out.timedOut)
         #expect(Date().timeIntervalSince(started) < 5)
     }
 

@@ -46,6 +46,7 @@ enum Snapshot {
         try await full.populate()
         try await capturePopulated(full, renderer)
         try await captureLayoutCases(renderer)
+        try await captureUsability(renderer)
 
         // Keep detection pending without delaying fake subprocesses or using real user data.
         let pending = try SampleWorld(tailcatInstalled: true)
@@ -104,7 +105,7 @@ enum Snapshot {
         await manager.runner(id: sample.socksID)?.runPing()
         sample.navigation.selection = .rule(sample.serveID)
         try await renderer.page("readme-overview", HStack(alignment: .top, spacing: 20) {
-            ManageView().frame(width: 900, height: 610)
+            ManageView().frame(width: 900, height: 720)
                 .background(Color(nsColor: .windowBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             MenuContent().frame(width: 320)
@@ -115,6 +116,42 @@ enum Snapshot {
         sample.navigation.selection = .remote(sample.macMiniID)
         try await renderer.page("readme-remote", ManageView(), in: sample,
                                 size: CGSize(width: 900, height: 720))
+    }
+
+    private static func captureUsability(_ renderer: Renderer) async throws {
+        let sample = try SampleWorld(tailcatInstalled: true)
+        defer { sample.tearDown() }
+        try await sample.populate()
+        let manager = sample.manager
+        var remote = manager.remote(id: sample.macMiniID)!
+        remote.sshPort = "2222"
+        remote.webPort = 8080
+        remote.filePort = 2222
+        manager.saveRemote(remote)
+        try await renderer.page("usability-search-empty", ManageView(search: "missing"), in: sample, size: CGSize(width: 700, height: 480))
+        try await renderer.page("usability-search-running", ManageView(statusFilter: 1), in: sample, size: CGSize(width: 700, height: 480))
+        sample.navigation.selection = .transfers
+        try await renderer.page("usability-transfers-empty", ManageView(), in: sample, size: CGSize(width: 700, height: 480))
+        manager.transfers.start(remote: remote, operation: .upload(files: [URL(fileURLWithPath: "/Users/me/slow-snapshot-project-archive.zip")], path: ""))
+        manager.transfers.start(remote: remote, operation: .upload(files: [URL(fileURLWithPath: "/Users/me/denied-snapshot.txt")], path: ""))
+        manager.transfers.start(remote: remote, operation: .download(path: "report.txt", isDirectory: false, destination: URL(fileURLWithPath: "/Users/me/Downloads")))
+        try await renderer.page("usability-transfers", ManageView(), in: sample, size: CGSize(width: 700, height: 620))
+        try await renderer.page("usability-transfer-menu", MenuContent(), in: sample)
+        sample.navigation.selection = .remote(remote.id)
+        try await renderer.page("usability-custom-ports", ManageView(), in: sample, size: CGSize(width: 700, height: 620))
+        try await renderer.page("usability-remote-editor", RemoteEditor(remote: remote, isNew: false) { _ in false }, in: sample)
+        try await renderer.page("usability-command", TerminalCommandSheet(remote: remote), in: sample)
+        let backup = ConfigurationBackup(rules: [TunnelRule(name: "Imported website", remoteID: remote.id, mappings: ["0:8080"], autoStart: true)],
+                                         remotes: [remote], contacts: [Contact(name: "Alice", publicKey: "nodekey:" + String(repeating: "ab", count: 32))])
+        let plan = try ConfigurationImport(backup: backup, rules: [], remotes: [], contacts: [])
+        try await renderer.page("usability-backup-preview", BackupView(plan: plan), in: sample, size: CGSize(width: 460, height: 620))
+        try await renderer.page("usability-editor-errors", RuleEditor(rule: TunnelRule(mappings: ["0:wrong"]), isNew: true, contacts: [],
+            issues: [.emptyName, .invalidAddress, .invalidMapping("0:wrong")]) { _ in false }, in: sample)
+        var unreachable = remote
+        unreachable.address = "missing.example.com"
+        manager.saveRemote(unreachable)
+        await manager.pingRemote(id: remote.id)
+        try await renderer.page("usability-probe-error", ManageView(), in: sample, size: CGSize(width: 700, height: 620))
     }
 
     private static func captureLayoutCases(_ renderer: Renderer) async throws {
@@ -184,7 +221,7 @@ enum Snapshot {
                        RemoteFileEntry(mode: "-rw-r--r--", size: 1_048_576, modified: "Sep 29 22:40", name: longName + ".txt", isDirectory: false)]
         try await renderer.page("audit-file-list", ScrollView { FileBrowser(identity: identity, path: shared.filesDir, entries: entries).padding() },
                                 in: sample, size: CGSize(width: 460, height: 420))
-        try await renderer.page("audit-file-transfer", ScrollView { FileBrowser(identity: identity, loading: true, error: error, transfer: L10n.tr("正在下载 %@…", longName + ".txt"), transferRunning: true).padding() },
+        try await renderer.page("audit-file-transfer", ScrollView { FileBrowser(identity: identity, loading: true, error: error).padding() },
                                 in: sample, size: CGSize(width: 460, height: 420))
         try await renderer.page("audit-file-empty", FileBrowser(identity: identity, entries: []).padding().frame(width: 460), in: sample)
         try await renderer.page("audit-copy-revealed", CopyableText(text: "tcLONG" + String(repeating: "q7Xk2PzR", count: 100), lineLimit: 3,
@@ -524,7 +561,10 @@ private final class SampleWorld {
       "parse "*) echo '{"ServerPublic":"nodekey:8c1e5a0f2b7d","RegionID":1}' ;;
       *ping*\(macMiniAddress)*) echo 'pong in 3.2ms via 192.168.1.20:41641' ;;
       *ping*\(officeAddress)*) echo 'pong in 42.1ms via DERP(1)' ;;
-      *ping*) exit 1 ;;
+      *ping*) echo 'lookup missing.example.com: no such host' >&2; exit 1 ;;
+      *cp*slow-snapshot*) exec sleep 120 ;;
+      *cp*denied-snapshot*) echo 'permission denied: destination is read-only' >&2; exit 1 ;;
+      *cp*) exit 0 ;;
       "ls -l "*) printf '%s\\n' 'drwxr-xr-x           96 Sep 30 09:12 Documents/' '-rw-r--r--      1048576 Sep 29 22:40 notes.txt' ;;
       *) echo "not simulated: $*" >&2; exit 2 ;;
     esac

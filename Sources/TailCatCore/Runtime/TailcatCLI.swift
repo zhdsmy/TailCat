@@ -7,6 +7,20 @@ public struct CLIError: Error, Equatable, Sendable, CustomStringConvertible {
     public var description: String { message }
 
     static let binaryNotFound = CLIError(LaunchError.binaryNotFound.description)
+
+    public var needsBinaryCheck: Bool { self == .binaryNotFound }
+
+    public var recoverySuggestion: String {
+        if needsBinaryCheck { return L10n.tr("安装或选择 tailcat 后，点击重新检测。") }
+        let lower = message.lowercased()
+        if lower.contains("no such host") || lower.contains("nxdomain") || lower.contains("no tailcat txt") {
+            return L10n.tr("检查远端域名和 tailcat TXT 记录，然后重试。")
+        }
+        if lower.contains("permission denied") || lower.contains("not allowed") || lower.contains("unauthorized") {
+            return L10n.tr("请对方检查允许列表与当前客户端身份；SSH 还需要单独的授权公钥。")
+        }
+        return L10n.tr("确认远端服务已启动，并检查地址、网络与客户端权限后重试。")
+    }
 }
 
 /// A DERP region from `genkey --region=list` (stderr lines `  %3d code name`).
@@ -113,13 +127,27 @@ public struct TailcatCLI: Sendable {
 
     public static func ping(executable: URL, identity: ClientIdentity, timeoutSeconds: Int,
                             untilDirect: Bool, settings: AppSettings = AppSettings()) async -> PingResult? {
+        try? await probe(executable: executable, identity: identity, timeoutSeconds: timeoutSeconds,
+                         untilDirect: untilDirect, settings: settings).get()
+    }
+
+    public static func probe(executable: URL, identity: ClientIdentity, timeoutSeconds: Int,
+                             untilDirect: Bool, settings: AppSettings = AppSettings()) async -> Result<PingResult, CLIError> {
         let output = await ProcessRunner.run(
             executable: executable,
             arguments: identity.pingArguments(timeoutSeconds: timeoutSeconds, untilDirect: untilDirect, settings: settings),
             hardTimeout: TimeInterval(timeoutSeconds) + 5)
-        guard output.status == 0 else { return nil }
-        return output.stdout.split(whereSeparator: \.isNewline).reversed()
-            .compactMap { PingResult.parse(String($0)) }.first
+        guard output.status == 0 else { return .failure(CLIError(output.errorSummary)) }
+        guard let reply = output.stdout.split(whereSeparator: \.isNewline).reversed()
+            .compactMap({ PingResult.parse(String($0)) }).first
+        else { return .failure(CLIError(L10n.tr("命令已结束，但无法解析连接探测结果"))) }
+        return .success(reply)
+    }
+
+    public func probe(_ identity: ClientIdentity, untilDirect: Bool = false, timeoutSeconds: Int = 10) async -> Result<PingResult, CLIError> {
+        guard let exe = executable() else { return .failure(.binaryNotFound) }
+        return await Self.probe(executable: exe, identity: identity, timeoutSeconds: timeoutSeconds,
+                                untilDirect: untilDirect, settings: settings)
     }
 
     public func ping(_ identity: ClientIdentity, untilDirect: Bool = false, timeoutSeconds: Int = 10) async -> PingResult? {
@@ -204,29 +232,32 @@ public struct TailcatCLI: Sendable {
     }
 
     public static func copyArguments(identity: ClientIdentity, sources: [String], target: String,
-                                     recursive: Bool, preserve: Bool, settings: AppSettings = AppSettings()) -> [String] {
+                                     recursive: Bool, preserve: Bool, port: Int = 22, settings: AppSettings = AppSettings()) -> [String] {
         var args = settings.globalFlagArguments(key: identity.key) + ["cp"]
         if recursive { args.append("-r") }
         if preserve { args.append("-p") }
+        if port != 22 { args += ["-P", String(port)] }
         return args + sources + [target]
     }
 
     /// Uploads local absolute paths into `remotePath` (a directory, "" = the served root).
     /// Cancelling the calling task kills the copy.
     public func upload(_ identity: ClientIdentity, files: [URL], remotePath: String,
-                       preserve: Bool = false) async -> Result<Void, CLIError> {
+                       preserve: Bool = false, port: Int = 22) async -> Result<Void, CLIError> {
+        guard (1...65535).contains(port) else { return .failure(CLIError(L10n.tr("文件端口必须在 1–65535 之间"))) }
         let recursive = files.contains { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
         let target = "\(identity.address):\(remotePath == "." ? "" : remotePath)"
         let args = Self.copyArguments(identity: identity, sources: files.map(\.path), target: target,
-                                      recursive: recursive, preserve: preserve, settings: settings)
+                                      recursive: recursive, preserve: preserve, port: port, settings: settings)
         return await runChecked(args, timeout: 6 * 3600).map { _ in () }
     }
 
     public func download(_ identity: ClientIdentity, remotePath: String, isDirectory: Bool,
-                         to localDirectory: URL, preserve: Bool = false) async -> Result<Void, CLIError> {
+                         to localDirectory: URL, preserve: Bool = false, port: Int = 22) async -> Result<Void, CLIError> {
+        guard (1...65535).contains(port) else { return .failure(CLIError(L10n.tr("文件端口必须在 1–65535 之间"))) }
         let args = Self.copyArguments(identity: identity, sources: ["\(identity.address):\(remotePath)"],
                                       target: localDirectory.path + "/", recursive: isDirectory,
-                                      preserve: preserve, settings: settings)
+                                      preserve: preserve, port: port, settings: settings)
         return await runChecked(args, timeout: 6 * 3600).map { _ in () }
     }
 
