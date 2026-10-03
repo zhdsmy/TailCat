@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
 ### 新增
 
 - 统一文件传输任务：菜单、拖放和文件页共用状态、取消、重试及 Finder 定位入口，切换页面后继续可管理。
@@ -132,7 +134,9 @@
 
 - Bundle ID 由 `app.tailcat.menubar` 改为 `io.github.zhdsmy.TailCat`。自己构建过旧版本的用户：规则、远端等数据（`~/Library/Application Support/TailCat/`）不受影响，偏好设置会在首次启动时自动迁移；“登录时启动”需要重新打开，并在“系统设置 › 通用 › 登录项”里删掉旧条目；系统会重新询问通知权限。
 
-[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/zhdsmy/TailCat/compare/v0.4.0...HEAD
+
+[0.4.0]: https://github.com/zhdsmy/TailCat/compare/v0.3.0...v0.4.0
 
 [0.3.0]: https://github.com/zhdsmy/TailCat/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/zhdsmy/TailCat/compare/v0.2.0...v0.2.1
